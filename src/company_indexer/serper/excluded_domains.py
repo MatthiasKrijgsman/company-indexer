@@ -24,6 +24,10 @@ EXCLUDED_DOMAINS: list[str] = [
     "creditsafe.com",
     "altares.nl",
     "transfirm.nl",
+    "northdata.com",
+    "oozo.nl",
+    "cage.report",
+    "bedrijven.com",
 ]
 
 

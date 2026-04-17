@@ -39,7 +39,7 @@ class CompanySeed:
 
 SEED_COMPANIES: list[CompanySeed] = [
     CompanySeed(
-        kvk_number="33014286",
+        kvk_number="17001910",
         names=[
             NameSeed("Koninklijke Philips N.V.", NameType.STATUTORY),
             NameSeed("Philips", NameType.TRADE),

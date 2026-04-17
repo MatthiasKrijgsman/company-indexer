@@ -99,6 +99,49 @@ Responses:
 - `200 OK` — `WebsiteSearchDetail[]`.
 - `404 Not Found` — no company with that KVK number.
 
+### `POST /companies/{kvk_number}/resolve-website`
+
+Reads the latest successful `WebsiteSearch` for this company and asks an
+LLM (Claude Haiku 4.5) to pick the candidate most likely to be the
+company's own primary website. The LLM sees Serper metadata only (titles,
+URLs, snippets) — it does not fetch candidate pages.
+
+Always inserts a new `CompanyWebsite` row (history is preserved across
+re-resolutions). The LLM may return `url=null` when no candidate is
+confidently the company's site — that is a valid outcome.
+
+Path parameters:
+
+| Name         | Type   | Description           |
+|--------------|--------|-----------------------|
+| `kvk_number` | string | KVK registration nr.  |
+
+Responses:
+
+- `200 OK` — `WebsiteRead` (see below).
+- `400 Bad Request` — no successful website search on record. Call
+  `POST /companies/{kvk_number}/website-search` first.
+- `404 Not Found` — no company with that KVK number.
+- `502 Bad Gateway` — the LLM call failed. A row is still written with
+  `confidence="none"` and `reason="resolver_error: ..."` so the attempt is
+  visible via `GET /companies/{kvk_number}/website`.
+
+### `GET /companies/{kvk_number}/website`
+
+Returns the most recent website resolution for the given company.
+
+Path parameters:
+
+| Name         | Type   | Description           |
+|--------------|--------|-----------------------|
+| `kvk_number` | string | KVK registration nr.  |
+
+Responses:
+
+- `200 OK` — `WebsiteRead`.
+- `404 Not Found` — no company with that KVK number, or no resolution has
+  been run yet.
+
 ## Schemas
 
 ### `CompanyRead`
@@ -146,3 +189,15 @@ Responses:
 | `error`      | string \| null                          |
 | `results`    | object \| null (raw Serper JSON)        |
 | `created_at` | datetime (ISO-8601, tz-aware)           |
+
+### `WebsiteRead`
+
+| Field              | Type                                            |
+|--------------------|-------------------------------------------------|
+| `id`               | int                                             |
+| `source_search_id` | int (FK → the `WebsiteSearch` this was built on)|
+| `url`              | string \| null (null = no confident match)      |
+| `confidence`       | enum (`high`, `medium`, `low`, `none`)          |
+| `reason`           | string (short LLM rationale, or failure code)   |
+| `llm_model`        | string (e.g. `claude-haiku-4-5`; empty on skip) |
+| `created_at`       | datetime (ISO-8601, tz-aware)                   |

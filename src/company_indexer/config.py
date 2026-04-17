@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379/0")
     log_level: str = Field(default="INFO")
     serper_api_key: str = Field(default="")
+    anthropic_api_key: str = Field(default="")
 
 
 @lru_cache(maxsize=1)
