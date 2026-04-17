@@ -59,6 +59,46 @@ Responses:
 - `200 OK` — single `CompanyRead` object (same shape as `items[]` above).
 - `404 Not Found` — no company with that KVK number.
 
+### `POST /companies/{kvk_number}/website-search`
+
+Runs a Google search (via Serper) for `kvk "{kvk_number}"` with known
+business-registry aggregators excluded, and stores the raw result. Intended
+as the first step in finding a company's own website — picking the winning
+URL from the stored results is left to a future enrichment step.
+
+The attempt is persisted whether it succeeds or fails.
+
+Path parameters:
+
+| Name         | Type   | Description           |
+|--------------|--------|-----------------------|
+| `kvk_number` | string | KVK registration nr.  |
+
+Responses:
+
+- `200 OK` — `WebsiteSearchRead` (see below).
+- `404 Not Found` — no company with that KVK number.
+- `502 Bad Gateway` — Serper call failed (timeout, network error, no credits,
+  unauthorized, or non-200 response). The attempt row is still written with
+  `status="failed"`.
+
+### `GET /companies/{kvk_number}/website-search`
+
+Returns every website-search attempt for the given company, newest first,
+with the raw Serper response JSON inlined. Empty list if the company exists
+but no searches have been run yet.
+
+Path parameters:
+
+| Name         | Type   | Description           |
+|--------------|--------|-----------------------|
+| `kvk_number` | string | KVK registration nr.  |
+
+Responses:
+
+- `200 OK` — `WebsiteSearchDetail[]`.
+- `404 Not Found` — no company with that KVK number.
+
 ## Schemas
 
 ### `CompanyRead`
@@ -87,3 +127,22 @@ Responses:
 | `country`      | string           |
 | `lat`          | decimal \| null  |
 | `lon`          | decimal \| null  |
+
+### `WebsiteSearchRead`
+
+| Field        | Type                           |
+|--------------|--------------------------------|
+| `id`         | int                            |
+| `status`     | enum (`success`, `failed`)     |
+| `created_at` | datetime (ISO-8601, tz-aware)  |
+
+### `WebsiteSearchDetail`
+
+| Field        | Type                                    |
+|--------------|-----------------------------------------|
+| `id`         | int                                     |
+| `query`      | string (the exact query sent to Serper) |
+| `status`     | enum (`success`, `failed`)              |
+| `error`      | string \| null                          |
+| `results`    | object \| null (raw Serper JSON)        |
+| `created_at` | datetime (ISO-8601, tz-aware)           |
