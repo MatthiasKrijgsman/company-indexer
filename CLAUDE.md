@@ -90,6 +90,7 @@ then re-seed.
 - The `NameType` Postgres enum is declared once as `name_type_enum` and
   reused — don't let SQLAlchemy auto-generate a new type per column.
 - Keep code boring and readable; this will be worked on by humans.
+- When adding new endpoints to the API, document them in `docs.md`.
 
 ## What NOT to add yet
 
