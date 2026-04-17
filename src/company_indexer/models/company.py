@@ -108,6 +108,9 @@ class Address(Base):
     country: Mapped[str] = mapped_column(String(2), default="NL")
     lat: Mapped[float | None] = mapped_column(Numeric(9, 6), nullable=True)
     lon: Mapped[float | None] = mapped_column(Numeric(9, 6), nullable=True)
+    geocoded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

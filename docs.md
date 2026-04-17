@@ -142,6 +142,29 @@ Responses:
 - `404 Not Found` — no company with that KVK number, or no resolution has
   been run yet.
 
+### `POST /companies/{kvk_number}/geocode`
+
+Geocodes every address on the company via the Dutch government's PDOK
+Locatieserver (free, keyless, BAG-backed). Only street-address-level
+matches (`type=adres`) are accepted — postcode or street centroids are
+ignored. Each address's `lat`, `lon`, and `geocoded_at` fields are
+updated; addresses that PDOK can't resolve keep their existing `lat`/`lon`
+but still have `geocoded_at` stamped.
+
+Path parameters:
+
+| Name         | Type   | Description           |
+|--------------|--------|-----------------------|
+| `kvk_number` | string | KVK registration nr.  |
+
+Responses:
+
+- `200 OK` — updated `CompanyRead`. Addresses are included with populated
+  coordinates where PDOK had a match.
+- `404 Not Found` — no company with that KVK number.
+- `502 Bad Gateway` — one or more PDOK calls failed with a network-level
+  error (timeout, non-200). Any partial successes are still committed.
+
 ## Schemas
 
 ### `CompanyRead`
@@ -161,15 +184,16 @@ Responses:
 
 ### `AddressRead`
 
-| Field          | Type             |
-|----------------|------------------|
-| `street`       | string \| null   |
-| `house_number` | string \| null   |
-| `postcode`     | string \| null   |
-| `city`         | string \| null   |
-| `country`      | string           |
-| `lat`          | decimal \| null  |
-| `lon`          | decimal \| null  |
+| Field          | Type                          |
+|----------------|-------------------------------|
+| `street`       | string \| null                |
+| `house_number` | string \| null                |
+| `postcode`     | string \| null                |
+| `city`         | string \| null                |
+| `country`      | string                        |
+| `lat`          | decimal \| null               |
+| `lon`          | decimal \| null               |
+| `geocoded_at`  | datetime \| null (ISO-8601)   |
 
 ### `WebsiteSearchRead`
 
@@ -197,6 +221,7 @@ Responses:
 | `id`               | int                                             |
 | `source_search_id` | int (FK → the `WebsiteSearch` this was built on)|
 | `url`              | string \| null (null = no confident match)      |
+| `homepage_url`     | string \| null (`scheme://netloc/` of `url`)    |
 | `confidence`       | enum (`high`, `medium`, `low`, `none`)          |
 | `reason`           | string (short LLM rationale, or failure code)   |
 | `llm_model`        | string (e.g. `claude-haiku-4-5`; empty on skip) |

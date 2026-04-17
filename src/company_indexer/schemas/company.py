@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
@@ -22,6 +23,7 @@ class AddressRead(BaseModel):
     country: str
     lat: Decimal | None
     lon: Decimal | None
+    geocoded_at: datetime | None
 
 
 class CompanyRead(BaseModel):

@@ -1,4 +1,5 @@
 from typing import Annotated
+from urllib.parse import urlparse
 
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -29,6 +30,16 @@ from company_indexer.serper.excluded_domains import build_query
 router = APIRouter(prefix="/companies", tags=["website-search"])
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+
+
+def _homepage_url(url: str | None) -> str | None:
+    """Reduce a URL to its homepage form: scheme + netloc + '/'."""
+    if not url:
+        return None
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}/"
 
 
 @router.post(
@@ -169,6 +180,7 @@ async def resolve_website_endpoint(
         company_id=company.id,
         source_search_id=latest_search.id,
         url=url,
+        homepage_url=_homepage_url(url),
         confidence=confidence,
         reason=reason,
         llm_model=llm_model,

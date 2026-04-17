@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from company_indexer.api.routes import companies, website_searches
+from company_indexer.api.routes import companies, geocoding, website_searches
 from company_indexer.db import create_all
 
 
@@ -18,6 +18,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="company-indexer", version="0.1.0", lifespan=lifespan)
     app.include_router(companies.router)
     app.include_router(website_searches.router)
+    app.include_router(geocoding.router)
     return app
 
 

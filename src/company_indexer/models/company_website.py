@@ -34,6 +34,7 @@ class CompanyWebsite(Base):
         ForeignKey("website_searches.id", ondelete="CASCADE"), index=True
     )
     url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    homepage_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     confidence: Mapped[WebsiteConfidence] = mapped_column(website_confidence_enum)
     reason: Mapped[str] = mapped_column(String(1024))
     llm_model: Mapped[str] = mapped_column(String(64))

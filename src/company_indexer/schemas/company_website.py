@@ -11,6 +11,7 @@ class WebsiteRead(BaseModel):
     id: int
     source_search_id: int
     url: str | None
+    homepage_url: str | None
     confidence: WebsiteConfidence
     reason: str
     llm_model: str
