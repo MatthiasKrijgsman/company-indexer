@@ -46,12 +46,14 @@ Downstream consumers (search, UI, alerting) will read `Job` rows.
   careers URL" from "extract jobs from this page" keeps both tasks
   narrow, cacheable, and individually debuggable. Each call is Haiku
   4.5 with a frozen system prompt.
-- **Deterministic shortcuts first.** Known ATS hostnames (Recruitee,
-  Homerun, Workable, BambooHR, Workday, Greenhouse, Lever, Personio,
-  TeamTailor, SmartRecruiters) are unambiguous — any homepage link to
-  those is a strong careers-URL signal and bypasses the picker LLM.
-- **Null is a valid result at both stages.** Most Dutch SMBs don't
-  publish a careers page at all. Record the attempt with
+- **Company's own domain only, for now.** External ATS platforms
+  (Recruitee, Homerun, Workable, etc.) are out of scope for this slice
+  — careers pages not on the company's registered website domain are
+  treated as "no careers page" and persisted as such. Revisit once
+  same-domain extraction is validated.
+- **Null is a valid result at both stages.** Many Dutch SMBs don't
+  publish a careers page at all on their own site (many use an ATS,
+  which we're ignoring for now). Record the attempt with
   `status="no_careers_page"` and move on.
 - **Never raise on provider failures.** Same pattern as `serper/`,
   `llm/`, `pdok/`: typed result with `ok` + `error` code.
@@ -79,31 +81,30 @@ Each stage persists its own row and can be re-run independently.
 Input: the latest `OK` `WebsiteScrape` for the company. We need the
 homepage HTML's link set and the resolved `homepage_url`.
 
-**Candidate building** — deterministic, no LLM:
+**Candidate building** — deterministic, no LLM, same-domain only:
 
 1. Parse homepage HTML (load from disk via `WebsitePage.html_path`).
 2. Collect same-domain `<a>` links whose path + anchor text match a
    small keyword set: `vacature`, `vacatures`, `werken`, `werken-bij`,
-   `jobs`, `job`, `career`, `careers`. Score as in
-   `plan-scrape.md`'s older discover logic.
-3. Collect any link whose host is on the ATS allowlist — these are
-   strong signals regardless of anchor text. Tag with detected vendor
-   for observability.
-4. Add a small fallback path list on the company's own domain
-   (`/vacatures`, `/werken-bij`, `/careers`) so image-only navs still
-   contribute.
-5. Dedupe (via `scraper.discover.normalize_url`), cap at ~10 candidates.
+   `jobs`, `job`, `career`, `careers`. Score by keyword weight.
+3. Add a small fallback path list on the company's own domain
+   (`/vacatures`, `/werken-bij`, `/careers`) so image-only or
+   JS-rendered navs still contribute.
+4. Dedupe (via `scraper.discover.normalize_url`), cap at ~10 candidates.
+
+Cross-domain links (to ATS hosts like `*.recruitee.com` or similar) are
+dropped at this stage. Future slices will add them back.
 
 **LLM pick** — Claude Haiku 4.5, `messages.parse` with a Pydantic
 output model. Input: company name(s), city, homepage URL, candidate
-list with anchor text + ATS vendor tag. Output: `chosen_url`,
-`is_external_ats`, `ats_vendor`, `confidence` (`high`/`medium`/`low`),
-`reason`. Returns `null` when no candidate is confidently the careers
-page.
+list with anchor text. Output: `chosen_url`, `confidence`
+(`high`/`medium`/`low`), `reason`. Returns `null` when no candidate is
+confidently the careers page.
 
-Skip the LLM entirely when exactly one candidate is on the ATS
-allowlist — set `confidence=high`, `reason="known_ats"`. Saves a call
-on a majority of cases at scale.
+When candidate list has exactly one entry on a fallback path the
+picker LLM is still called — we don't auto-accept a guessed URL
+without confirmation that the page actually exists and looks like a
+careers page. The fetch in Stage B is the real validator.
 
 **Persist:** new `CompanyCareersUrl` row. Append-only history. Even a
 null result is persisted (`confidence=none`, `reason` explains why).
@@ -120,9 +121,10 @@ Input: the latest `CompanyCareersUrl` with non-null `url`.
 3. Classify via `scraper.detect`. Blocked / js_required short-circuits
    the scrape; the LLM isn't called.
 4. On success: save HTML to disk, extract markdown.
-5. If the extracted markdown is short AND the HTML contains an
-   `<iframe src="…">` pointing to a known ATS host, follow one level of
-   iframe and repeat steps 2–4 on the iframe `src`.
+
+Iframe follow (ATS embeds) is out of scope for this slice — an
+iframe-driven careers page with near-empty markdown will be recorded
+as `js_required` or `no_jobs` and picked up by a future slice.
 
 **LLM extract** — Haiku 4.5, frozen system prompt, `messages.parse`
 with `list[Job]` output. Feed the page's markdown (clipped to a
@@ -138,28 +140,6 @@ position. When the LLM returns an empty list but the page fetched
 cleanly, `JobsScrape.status = "no_jobs"` — the company *has* a
 careers page, no roles are open. This is a valid, useful state.
 
-## ATS allowlist
-
-A static list in `jobs/ats.py`. Host match is exact-or-subdomain on the
-registrable domain. Initial seeds (Dutch + EU-common):
-
-```
-recruitee.com
-homerun.co
-workable.com
-bamboohr.com
-myworkdayjobs.com / workday.com
-greenhouse.io
-lever.co
-personio.de / personio.com
-teamtailor.com
-smartrecruiters.com
-jobvite.com
-afas.nl (when self-hosted on subdomain)
-```
-
-Expand as new vendors surface. Same spirit as `serper/excluded_domains.py`.
-
 ## Schema
 
 Three new tables, matching the append-only convention.
@@ -173,12 +153,10 @@ One row per resolution attempt per company.
 | `id`                | int PK                                                     |
 | `company_id`        | FK → `companies.id`, cascade, indexed                      |
 | `source_scrape_id`  | FK → `website_scrapes.id`, cascade — the scrape whose homepage HTML was read |
-| `url`               | String(2048), nullable — null means no careers page found  |
-| `is_external_ats`   | boolean                                                    |
-| `ats_vendor`        | String(64), nullable — matched ATS host family, e.g. `recruitee` |
+| `url`               | String(2048), nullable — null means no careers page found on the company's own domain |
 | `confidence`        | enum (reuse `website_confidence`): `high`/`medium`/`low`/`none` |
-| `reason`            | String(512) — short rationale (`known_ats`, LLM reason, or error code) |
-| `llm_model`         | String(64) — empty when the LLM was skipped                |
+| `reason`            | String(512) — short LLM rationale, or error code           |
+| `llm_model`         | String(64)                                                 |
 | `created_at`        | timestamptz, server default `now()`                        |
 
 No new enum — `website_confidence` already has the right shape.
@@ -192,7 +170,7 @@ One row per extraction attempt per company.
 | `id`                 | int PK                                                     |
 | `company_id`         | FK → `companies.id`, cascade, indexed                      |
 | `source_careers_id`  | FK → `company_careers_urls.id`, cascade                    |
-| `fetched_url`        | String(2048) — the URL actually fetched (post-iframe)      |
+| `fetched_url`        | String(2048) — the URL actually fetched                    |
 | `status`             | enum: `ok`, `no_jobs`, `no_careers_page`, `js_required`, `blocked`, `failed`, `llm_error` |
 | `http_status`        | int, nullable                                              |
 | `content_hash`       | String(64), nullable — sha256 of the markdown used for extraction |
@@ -280,11 +258,9 @@ pattern: `ConfigDict(from_attributes=True)` + `model_validate(obj)`.
 ```
 src/company_indexer/jobs/
 ├── __init__.py
-├── ats.py          — ATS hostname allowlist + vendor detection
-├── candidates.py   — build candidate careers URLs from homepage HTML
+├── candidates.py   — build candidate careers URLs from homepage HTML (same-domain only)
 ├── resolver.py     — Claude Haiku call, Pydantic output
 ├── extractor.py    — Claude Haiku call, list[Job] structured output
-├── iframe.py       — detect + resolve one level of ATS iframe
 └── orchestrator.py — per-company resolve + scrape-jobs entrypoints
 ```
 
@@ -314,32 +290,37 @@ Stage B entry: `status="no_careers_page"`, no fetch, no LLM call.
 
 ## Slicing
 
-### Slice 1 — Tier 1, no iframe follow
+### Slice 1 — company-domain only
 
-- `jobs/` package minus `iframe.py`.
+- `jobs/` package: candidates, resolver, extractor, orchestrator.
 - Schema: all three tables, two new enums.
 - Reseed required.
 - Routes: `/resolve-careers`, `/careers-url`, `/scrape-jobs`, `/jobs`,
   `/jobs-history`.
 - `docs.md` updated.
 
-### Slice 1b — iframe follow
+### Slice 2 — ATS / external-domain careers pages
 
-- Add `jobs/iframe.py` — detect a single `<iframe>` pointing to an ATS
-  host, re-fetch its `src`, continue the pipeline.
-- No schema changes (`fetched_url` already captures post-iframe URL).
+- Add ATS hostname allowlist with vendor detection.
+- Extend `CompanyCareersUrl` with `is_external_ats` + `ats_vendor`
+  (additive migration when we get there).
+- Candidate builder includes cross-domain links to known ATS hosts.
+- Picker LLM sees vendor tag as a signal; deterministic shortcut when
+  exactly one unambiguous ATS link is present.
+- Iframe follow for company-domain pages that embed an ATS under
+  their own URL.
 
-### Slice 2 — Tier 2 rescue for JS-heavy careers pages
+### Slice 3 — Tier 2 rescue for JS-heavy careers pages
 
 - When a careers-page fetch yields `js_required`, route through the
   scraper's (future) Tier 2 provider. Depends on `plan-scrape.md`
-  slice 2 landing first.
+  Tier 2 landing first.
 
 ### Later (not planned yet)
 
 - PDF job listings (fetch, extract text, same extractor prompt).
 - Cross-scrape diff: new jobs, removed jobs, re-opened jobs.
-- Job canonicalization + dedupe across listings on multiple ATSes.
+- Job canonicalization + dedupe.
 - Employer branding / benefits extraction from the careers page.
 
 ## Out of scope for this plan

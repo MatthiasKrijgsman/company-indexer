@@ -35,3 +35,18 @@ async def save_html(
     absolute = _root() / rel
     await asyncio.to_thread(_write_sync, absolute, html)
     return str(rel)
+
+
+def _jobs_relative_path(company_id: int, jobs_scrape_id: int) -> Path:
+    # Sub-namespaced under "jobs" so these paths never collide with
+    # website-scrape paths, which share the same (company_id, id) shape.
+    return Path(str(company_id), "jobs", f"{jobs_scrape_id}.html")
+
+
+async def save_jobs_html(
+    company_id: int, jobs_scrape_id: int, html: str
+) -> str:
+    rel = _jobs_relative_path(company_id, jobs_scrape_id)
+    absolute = _root() / rel
+    await asyncio.to_thread(_write_sync, absolute, html)
+    return str(rel)

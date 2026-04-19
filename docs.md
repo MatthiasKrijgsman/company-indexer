@@ -199,6 +199,85 @@ Responses:
   has never been scraped.
 - `404 Not Found` — no company with that KVK number.
 
+### `POST /companies/{kvk_number}/resolve-careers`
+
+Builds candidate careers-page URLs from the homepage HTML of the latest `OK`
+`WebsiteScrape` (same-domain links keyword-scored against `vacature`, `werken`,
+`jobs`, `career` + a small fallback path list), then asks Claude Haiku 4.5 to
+pick the URL most likely to be the company's careers page. Always inserts a
+new `CompanyCareersUrl` row. A null `url` with `confidence="none"` is a valid,
+first-class outcome — most Dutch SMBs don't publish a same-domain careers page.
+
+External ATS platforms (Recruitee, Homerun, etc.) are not considered in this
+slice; any link off the company's own domain is dropped from the candidate list.
+
+Path parameters:
+
+| Name         | Type   | Description           |
+|--------------|--------|-----------------------|
+| `kvk_number` | string | KVK registration nr.  |
+
+Responses:
+
+- `200 OK` — `CompanyCareersUrlRead`.
+- `400 Bad Request` — no `OK` website scrape on record. Call
+  `POST /companies/{kvk_number}/scrape` first.
+- `404 Not Found` — no company with that KVK number.
+- `502 Bad Gateway` — the LLM call failed. A row is still written with
+  `confidence="none"` and `reason="resolver_error: ..."` so the attempt is
+  visible via `GET /companies/{kvk_number}/careers-url`.
+
+### `GET /companies/{kvk_number}/careers-url`
+
+Latest careers-URL resolution, including the null outcome.
+
+Responses:
+
+- `200 OK` — `CompanyCareersUrlRead`.
+- `404 Not Found` — no company with that KVK number, or no resolution run yet.
+
+### `POST /companies/{kvk_number}/scrape-jobs`
+
+Fetches the latest resolved careers URL, extracts markdown, and runs Claude
+Haiku 4.5 to enumerate open positions. Always inserts a new `JobsScrape` row
+plus one `Job` child per extracted position. Page-level outcomes (`blocked`,
+`js_required`, fetch failures) are carried on `JobsScrape.status` — the
+endpoint still returns `200 OK`. An empty-but-clean careers page yields
+`status="no_jobs"`; a null careers URL upstream is rejected with `400` rather
+than written as `no_careers_page` (the null was already persisted at the
+resolve step).
+
+Path parameters:
+
+| Name         | Type   | Description           |
+|--------------|--------|-----------------------|
+| `kvk_number` | string | KVK registration nr.  |
+
+Responses:
+
+- `200 OK` — `JobsScrapeRead` with the `jobs` array.
+- `400 Bad Request` — no careers URL, or no `OK` upstream website scrape.
+- `404 Not Found` — no company with that KVK number.
+
+### `GET /companies/{kvk_number}/jobs`
+
+Latest `JobsScrape` with jobs inlined.
+
+Responses:
+
+- `200 OK` — `JobsScrapeRead`.
+- `404 Not Found` — unknown company, or no jobs scrape run yet.
+
+### `GET /companies/{kvk_number}/jobs-history`
+
+History of jobs scrapes, newest first.
+
+Responses:
+
+- `200 OK` — `JobsScrapeRead[]`. Empty array when the company exists but has
+  never had jobs scraped.
+- `404 Not Found` — no company with that KVK number.
+
 ### `POST /companies/{kvk_number}/geocode`
 
 Geocodes every address on the company via the Dutch government's PDOK
@@ -311,3 +390,48 @@ Responses:
 Raw HTML is persisted to disk under `SCRAPED_HTML_DIR` (default
 `data/scraped_html/`) at `{company_id}/{scrape_id}/{page_id}.html`. The
 on-disk path is an internal detail and is not exposed on `WebsitePageRead`.
+
+### `CompanyCareersUrlRead`
+
+| Field              | Type                                                      |
+|--------------------|-----------------------------------------------------------|
+| `id`               | int                                                       |
+| `source_scrape_id` | int (FK → the `WebsiteScrape` this was built on)          |
+| `url`              | string \| null (null = no same-domain careers page found) |
+| `confidence`       | enum (`high`, `medium`, `low`, `none`)                    |
+| `reason`           | string (short LLM rationale, or error code)               |
+| `llm_model`        | string (e.g. `claude-haiku-4-5`; empty when not called)   |
+| `created_at`       | datetime (ISO-8601, tz-aware)                             |
+
+### `JobsScrapeRead`
+
+| Field                | Type                                                       |
+|----------------------|------------------------------------------------------------|
+| `id`                 | int                                                        |
+| `source_careers_id`  | int (FK → the `CompanyCareersUrl` this scrape targeted)    |
+| `fetched_url`        | string (the URL actually fetched)                          |
+| `status`             | enum (`ok`, `no_jobs`, `no_careers_page`, `js_required`, `blocked`, `failed`, `llm_error`) |
+| `http_status`        | int \| null                                                |
+| `content_hash`       | string \| null (sha256 of the markdown used for extraction)|
+| `llm_model`          | string \| null                                             |
+| `error`              | string \| null                                             |
+| `started_at`         | datetime (ISO-8601, tz-aware)                              |
+| `finished_at`        | datetime \| null                                           |
+| `created_at`         | datetime (ISO-8601, tz-aware)                              |
+| `jobs`               | `JobRead[]`                                                |
+
+Careers-page HTML is persisted to disk under `SCRAPED_HTML_DIR` at
+`{company_id}/jobs/{jobs_scrape_id}.html`. Not exposed on `JobsScrapeRead`.
+
+### `JobRead`
+
+| Field             | Type                                                                   |
+|-------------------|------------------------------------------------------------------------|
+| `id`              | int                                                                    |
+| `title`           | string                                                                 |
+| `url`             | string \| null (per-posting detail URL when visible in the listing)    |
+| `location`        | string \| null                                                         |
+| `employment_type` | enum (`full_time`, `part_time`, `contract`, `internship`, `unknown`)   |
+| `department`      | string \| null                                                         |
+| `raw_snippet`     | string \| null (verbatim markdown fragment used at extraction, ≤ 400 chars) |
+| `created_at`      | datetime (ISO-8601, tz-aware)                                          |
