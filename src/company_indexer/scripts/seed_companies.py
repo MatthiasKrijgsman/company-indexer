@@ -84,6 +84,20 @@ SEED_COMPANIES: list[CompanySeed] = [
             ),
         ],
     ),
+    CompanySeed(
+        kvk_number="08008886",
+        names=[
+            NameSeed("Buijtenhuis Nijkerk B.V.", NameType.STATUTORY),
+        ],
+        addresses=[
+            AddressSeed(
+                street="Beulekamperweg",
+                house_number="4",
+                postcode="3862NV",
+                city="Nijkerk",
+            ),
+        ],
+    ),
 ]
 
 

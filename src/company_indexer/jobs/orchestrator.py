@@ -220,6 +220,7 @@ async def scrape_jobs(
                     jobs_scrape_id=jobs_scrape.id,
                     title=item.title,
                     url=item.url,
+                    careers_url=jobs_scrape.fetched_url,
                     location=item.location,
                     employment_type=JobEmploymentType(item.employment_type),
                     department=item.department,

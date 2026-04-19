@@ -107,6 +107,7 @@ class Job(Base):
     )
     title: Mapped[str] = mapped_column(String(512))
     url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    careers_url: Mapped[str] = mapped_column(String(2048))
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     employment_type: Mapped[JobEmploymentType] = mapped_column(job_employment_type_enum)
     department: Mapped[str | None] = mapped_column(String(255), nullable=True)

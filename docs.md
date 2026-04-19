@@ -430,6 +430,7 @@ Careers-page HTML is persisted to disk under `SCRAPED_HTML_DIR` at
 | `id`              | int                                                                    |
 | `title`           | string                                                                 |
 | `url`             | string \| null (per-posting detail URL when visible in the listing)    |
+| `careers_url`     | string (the careers page this job was extracted from)                  |
 | `location`        | string \| null                                                         |
 | `employment_type` | enum (`full_time`, `part_time`, `contract`, `internship`, `unknown`)   |
 | `department`      | string \| null                                                         |

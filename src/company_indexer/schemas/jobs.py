@@ -27,6 +27,7 @@ class JobRead(BaseModel):
     id: int
     title: str
     url: str | None
+    careers_url: str
     location: str | None
     employment_type: JobEmploymentType
     department: str | None
