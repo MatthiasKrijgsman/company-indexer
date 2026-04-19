@@ -28,6 +28,9 @@ EXCLUDED_DOMAINS: list[str] = [
     "oozo.nl",
     "cage.report",
     "bedrijven.com",
+    "northdata.de",
+    "tweakers.net",
+    "europa.eu",
 ]
 
 

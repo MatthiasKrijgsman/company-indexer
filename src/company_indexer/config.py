@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
     serper_api_key: str = Field(default="")
     anthropic_api_key: str = Field(default="")
+    scraped_html_dir: str = Field(default="data/scraped_html")
 
 
 @lru_cache(maxsize=1)

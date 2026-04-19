@@ -31,8 +31,8 @@ python -m company_indexer.scripts.seed_companies
 
 # 3. Run the API
 uvicorn company_indexer.api.app:app --reload
-```
 
+```
 Then:
 
 - <http://localhost:8000/docs> — interactive API docs
@@ -46,8 +46,7 @@ Schema currently comes from `Base.metadata.create_all` — so whenever models
 change, wipe the volume and start over:
 
 ```bash
-docker compose down -v
-docker compose up -d
+docker compose down -v && docker compose up -d
 python -m company_indexer.scripts.seed_companies
 ```
 

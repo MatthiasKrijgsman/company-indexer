@@ -1,7 +1,7 @@
 # Website scraping plan
 
 Plan for the next enrichment slice: given a company with a resolved
-`CompanyWebsite.url`, scrape that site and store the content so downstream
+`CompanyWebsite.homepage_url`, scrape that site and store the content so downstream
 steps (jobs extraction, contact extraction, general LLM-based enrichment)
 have something to work on.
 
@@ -123,20 +123,23 @@ persisted and skipped. No retry, no fallback.
 
 ## Page discovery per company
 
-Hybrid — homepage drives discovery, small guessed-path list as a
-backstop:
+Slice 1b: **homepage only.** Fetch `CompanyWebsite.homepage_url` and
+nothing else. Discovery (nav/footer link extraction, keyword scoring,
+fallback path list) is deferred to a later slice — the homepage is the
+minimum viable corpus for the downstream LLM passes, and avoiding
+subpage fans-out also makes per-company rate and blast radius predictable
+for the eventual worker.
 
-1. Fetch the homepage (the resolved `CompanyWebsite.url`).
-2. Parse homepage HTML for same-domain `<a>` links in `<nav>`,
-   `<header>`, `<footer>`, and top-of-body.
-3. Score each link's path + anchor text against a small keyword set:
-   `contact`, `over`, `about`, `vacature`, `werken`, `job`, `career`,
-   `team`, `bedrijf`. Keep top ~8 matches.
-4. Union with a small fallback path list (`/contact`, `/vacatures`,
-   `/over-ons`) so image-based or JS navs still yield something.
-5. Dedupe, cap total pages at ~10 per company.
-6. Fetch pages in parallel with concurrency ~3 per company — enough to
-   be fast, gentle enough to not look like a scraper to the host.
+When subpage discovery is added back:
+
+- Parse homepage HTML for same-domain `<a>` links in `<nav>`, `<header>`,
+  `<footer>`, and top-of-body.
+- Score each link's path + anchor text against a small keyword set
+  (`contact`, `over`, `about`, `vacature`, `werken`, `job`, `career`,
+  `team`, `bedrijf`). Keep the top ~8.
+- Union with a small fallback path list (`/contact`, `/vacatures`,
+  `/over-ons`) for image-based or JS navs.
+- Dedupe, cap at ~10 pages, fetch with concurrency ~3.
 
 ## Schema
 
@@ -222,7 +225,7 @@ when implemented.
 
 ### `POST /companies/{kvk_number}/scrape`
 
-Reads the latest `CompanyWebsite` with non-null `url`, runs the scraper,
+Reads the latest `CompanyWebsite` with non-null `homepage_url`, runs the scraper,
 always inserts a new `WebsiteScrape` + child `WebsitePage` rows.
 
 - `200 OK` with a summary body, even when content-level things go wrong
@@ -271,7 +274,7 @@ src/company_indexer/scraper/
 ├── fetch.py         — Tier 1: httpx client → FetchResult(ok, status, html, error)
 ├── detect.py        — JS-skeleton / WAF-block heuristics → Verdict
 ├── extract.py       — trafilatura wrapper → (markdown, title)
-├── discover.py      — homepage link extraction + scoring
+├── discover.py      — URL normalization (subpage discovery deferred)
 ├── storage.py       — filesystem writer: save raw HTML under the scraped-html root, return relative path
 └── orchestrator.py  — per-company scrape loop, commits rows
 ```
@@ -290,18 +293,18 @@ website)`. Everything else is internal.
 Everything gets persisted. The status enums are the log; no separate
 log table.
 
-- Individual page failures → `WebsitePage.status` set, scrape
-  continues, `WebsiteScrape.pages_failed` incremented.
-- Whole-company failures (homepage times out, homepage 403, DNS fails)
-  → `WebsiteScrape.status = 'failed'` with a short `error` code. No
-  child `WebsitePage` rows needed beyond the homepage attempt itself.
-- Dead domains (DNS NXDOMAIN, connection refused on all attempts) →
+- Homepage OK → `WebsiteScrape.status = 'ok'`, `pages_ok = 1`.
+- Homepage times out / 403 / 5xx / DNS fails → `WebsiteScrape.status =
+  'failed'` with a short `error` code copied from the page status; the
+  `WebsitePage` row is still written so the failure is observable.
+- Dead domain (DNS NXDOMAIN, connection refused) →
   `status = 'skipped_dead_domain'`. Caller decides if/when to retry; we
   don't auto-skip chronic failures yet.
-- JS-heavy site detected on homepage → whole scrape ends with
-  `status = 'skipped_js_heavy'` (no point fetching subpages the same
-  way). Homepage `WebsitePage` row still written with
-  `status = 'js_required'`.
+- JS-heavy homepage → `status = 'skipped_js_heavy'`. Homepage
+  `WebsitePage` row still written with `status = 'js_required'`.
+
+When subpage discovery is reintroduced, per-page failures will also bump
+`WebsiteScrape.pages_failed` and `status` may become `'partial'`.
 
 The monthly re-scrape (future) can look at the previous scrape's page
 statuses and route `js_required` URLs straight to Tier 2 without
@@ -309,10 +312,10 @@ re-probing Tier 1. The schema supports this; the logic is slice 2+.
 
 ## Slicing
 
-### Slice 1 — Tier 1 only
+### Slice 1 — Tier 1, homepage only
 
-- `scraper/` package: headers, fetch, detect, extract, discover,
-  storage, orchestrator.
+- `scraper/` package: headers, fetch, detect, extract, storage,
+  orchestrator (+ a thin `discover.py` for URL normalization).
 - Schema: `WebsiteScrape`, `WebsitePage`, three new enums.
 - Reseed required (`docker compose down -v && docker compose up -d`
   + `python -m company_indexer.scripts.seed_companies`).
@@ -323,7 +326,14 @@ re-probing Tier 1. The schema supports this; the logic is slice 2+.
   `SCRAPED_HTML_DIR`); path stored in `WebsitePage.html_path`. Root
   directory added to `.gitignore`.
 - `docs.md` updated.
-- No Tier 2, no object storage, no worker, no re-scrape logic.
+- No subpage discovery, no Tier 2, no object storage, no worker, no
+  re-scrape logic.
+
+### Slice 1b — subpage discovery
+
+- Re-introduce homepage link extraction + scoring in `scraper/discover.py`.
+- Orchestrator fetches subpages with concurrency ~3 per company.
+- Scrape status gains `'partial'` semantics (some pages OK, some failed).
 
 ### Slice 2 — Tier 2 escalation
 

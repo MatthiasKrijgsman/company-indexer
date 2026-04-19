@@ -6,14 +6,6 @@ from pydantic import BaseModel, ConfigDict
 from company_indexer.models import WebsiteSearchStatus
 
 
-class WebsiteSearchRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    status: WebsiteSearchStatus
-    created_at: datetime
-
-
 class WebsiteSearchDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

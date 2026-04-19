@@ -76,7 +76,7 @@ Path parameters:
 
 Responses:
 
-- `200 OK` — `WebsiteSearchRead` (see below).
+- `200 OK` — `WebsiteSearchDetail` (raw Serper JSON inlined under `results`).
 - `404 Not Found` — no company with that KVK number.
 - `502 Bad Gateway` — Serper call failed (timeout, network error, no credits,
   unauthorized, or non-200 response). The attempt row is still written with
@@ -142,6 +142,63 @@ Responses:
 - `404 Not Found` — no company with that KVK number, or no resolution has
   been run yet.
 
+### `POST /companies/{kvk_number}/scrape`
+
+Scrapes the company's homepage (the latest `CompanyWebsite.homepage_url`).
+The homepage is classified, its raw HTML is persisted to disk under
+`SCRAPED_HTML_DIR`, and its extracted markdown + metadata are stored in the
+database. Always inserts a new `WebsiteScrape` row plus exactly one
+`WebsitePage` child for the homepage.
+
+Page-level outcomes (blocked, js_required, timeout, etc.) are recorded as
+`WebsitePage.status` — the endpoint still returns `200 OK` for those. Only
+protocol-level preconditions return non-2xx.
+
+Path parameters:
+
+| Name         | Type   | Description           |
+|--------------|--------|-----------------------|
+| `kvk_number` | string | KVK registration nr.  |
+
+Responses:
+
+- `200 OK` — `WebsiteScrapeRead` with the `pages` array.
+- `400 Bad Request` — no resolved `CompanyWebsite.homepage_url` on record. Call
+  `POST /companies/{kvk_number}/resolve-website` first.
+- `404 Not Found` — no company with that KVK number.
+
+### `GET /companies/{kvk_number}/scrape`
+
+Returns the most recent scrape for the company, with the page list inlined.
+
+Path parameters:
+
+| Name         | Type   | Description           |
+|--------------|--------|-----------------------|
+| `kvk_number` | string | KVK registration nr.  |
+
+Responses:
+
+- `200 OK` — `WebsiteScrapeRead`.
+- `404 Not Found` — unknown company, or no scrape has been run yet.
+
+### `GET /companies/{kvk_number}/scrapes`
+
+History of scrapes for the company, newest first. Each entry includes its
+full `pages` list.
+
+Path parameters:
+
+| Name         | Type   | Description           |
+|--------------|--------|-----------------------|
+| `kvk_number` | string | KVK registration nr.  |
+
+Responses:
+
+- `200 OK` — `WebsiteScrapeRead[]`. Empty array when the company exists but
+  has never been scraped.
+- `404 Not Found` — no company with that KVK number.
+
 ### `POST /companies/{kvk_number}/geocode`
 
 Geocodes every address on the company via the Dutch government's PDOK
@@ -195,14 +252,6 @@ Responses:
 | `lon`          | decimal \| null               |
 | `geocoded_at`  | datetime \| null (ISO-8601)   |
 
-### `WebsiteSearchRead`
-
-| Field        | Type                           |
-|--------------|--------------------------------|
-| `id`         | int                            |
-| `status`     | enum (`success`, `failed`)     |
-| `created_at` | datetime (ISO-8601, tz-aware)  |
-
 ### `WebsiteSearchDetail`
 
 | Field        | Type                                    |
@@ -226,3 +275,39 @@ Responses:
 | `reason`           | string (short LLM rationale, or failure code)   |
 | `llm_model`        | string (e.g. `claude-haiku-4-5`; empty on skip) |
 | `created_at`       | datetime (ISO-8601, tz-aware)                   |
+
+### `WebsiteScrapeRead`
+
+| Field               | Type                                                           |
+|---------------------|----------------------------------------------------------------|
+| `id`                | int                                                            |
+| `source_website_id` | int (FK → the `CompanyWebsite` this scrape targeted)           |
+| `status`            | enum (`ok`, `partial`, `failed`, `skipped_no_website`, `skipped_js_heavy`, `skipped_dead_domain`) |
+| `pages_attempted`   | int                                                            |
+| `pages_ok`          | int                                                            |
+| `pages_failed`      | int                                                            |
+| `error`             | string \| null (short code, e.g. `dead_domain`, `all_failed`)  |
+| `started_at`        | datetime (ISO-8601, tz-aware)                                  |
+| `finished_at`       | datetime \| null                                               |
+| `created_at`        | datetime (ISO-8601, tz-aware)                                  |
+| `pages`             | `WebsitePageRead[]`                                            |
+
+### `WebsitePageRead`
+
+| Field            | Type                                                                   |
+|------------------|------------------------------------------------------------------------|
+| `id`             | int                                                                    |
+| `url`            | string (the URL that was requested)                                    |
+| `normalized_url` | string (lowercased host + collapsed trailing slash, deduped per scrape)|
+| `fetch_method`   | enum (`http`, `jina`, `firecrawl`, `playwright`)                       |
+| `status`         | enum (`ok`, `http_4xx`, `http_5xx`, `timeout`, `network_error`, `js_required`, `blocked`, `dead_domain`, `non_html`) |
+| `http_status`    | int \| null                                                            |
+| `content_type`   | string \| null                                                         |
+| `content_hash`   | string \| null (sha256 hex of the extracted markdown)                  |
+| `title`          | string \| null                                                         |
+| `markdown`       | string \| null (extracted via trafilatura; null for non-OK pages)      |
+| `fetched_at`     | datetime (ISO-8601, tz-aware)                                          |
+
+Raw HTML is persisted to disk under `SCRAPED_HTML_DIR` (default
+`data/scraped_html/`) at `{company_id}/{scrape_id}/{page_id}.html`. The
+on-disk path is an internal detail and is not exposed on `WebsitePageRead`.

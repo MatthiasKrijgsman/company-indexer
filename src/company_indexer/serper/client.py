@@ -21,7 +21,7 @@ async def search(query: str, api_key: str) -> SerperResult:
     short, stable code the route can persist: ``no_credits``, ``unauthorized``,
     ``http_{status}``, ``timeout``, ``network_error``.
     """
-    payload = {"q": query, "gl": "nl", "hl": "nl", "num": 20}
+    payload = {"q": query, "num": 20}
     headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
     try:
         async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:

@@ -12,8 +12,10 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "redis>=5.2",
-    "httpx>=0.27",
+    "httpx[http2]>=0.27",
     "anthropic>=0.40",
+    "trafilatura>=1.12",
+    "beautifulsoup4>=4.12",
 ]
 
 [project.optional-dependencies]

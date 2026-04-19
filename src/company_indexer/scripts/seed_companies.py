@@ -46,10 +46,10 @@ SEED_COMPANIES: list[CompanySeed] = [
         ],
         addresses=[
             AddressSeed(
-                street="Amstelplein",
-                house_number="2",
-                postcode="1096BC",
-                city="Amsterdam",
+                street="High Tech Campus",
+                house_number="52",
+                postcode="5656AG",
+                city="Eindhoven",
             ),
         ],
     ),
