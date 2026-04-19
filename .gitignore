@@ -157,4 +157,5 @@ out/
 
 # Project
 /data/
+/data/scraped_html/
 
