@@ -8,6 +8,7 @@ import {
 import { apiGet, apiPost, ApiError } from "./client";
 import type {
   CompanyCareersUrlRead,
+  CompanyGeoPoint,
   CompanyListResponse,
   CompanyRead,
   JobsScrapeRead,
@@ -22,6 +23,7 @@ const enc = encodeURIComponent;
 // Centralized query keys so mutations can invalidate precisely.
 export const keys = {
   pricing: () => ["pricing"] as const,
+  geo: () => ["companies", "geo"] as const,
   companies: (q: string, limit: number, offset: number) =>
     ["companies", { q, limit, offset }] as const,
   company: (kvk: string) => ["company", kvk] as const,
@@ -52,6 +54,13 @@ export function usePricing() {
     queryKey: keys.pricing(),
     queryFn: () => apiGet<Pricing>("/pricing"),
     staleTime: Infinity, // static rate card
+  });
+}
+
+export function useCompanyGeo() {
+  return useQuery<CompanyGeoPoint[], ApiError>({
+    queryKey: keys.geo(),
+    queryFn: () => apiGet<CompanyGeoPoint[]>("/companies/geo"),
   });
 }
 

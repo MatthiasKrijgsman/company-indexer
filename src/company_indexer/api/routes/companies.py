@@ -6,8 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from company_indexer.api.deps import get_session
-from company_indexer.models import Company, CompanyName
-from company_indexer.schemas.company import CompanyListResponse, CompanyRead
+from company_indexer.models import Address, Company, CompanyName, NameType
+from company_indexer.schemas.company import (
+    CompanyGeoPoint,
+    CompanyListResponse,
+    CompanyRead,
+)
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -44,6 +48,38 @@ async def list_companies(
         limit=limit,
         offset=offset,
     )
+
+
+def _primary_name(company: Company) -> str:
+    """Statutory name if present, else the first name on record."""
+    statutory = next(
+        (n.name for n in company.names if n.type == NameType.STATUTORY), None
+    )
+    return statutory or (company.names[0].name if company.names else company.kvk_number)
+
+
+@router.get("/geo", response_model=list[CompanyGeoPoint])
+async def list_geo_points(session: SessionDep) -> list[CompanyGeoPoint]:
+    """Every geocoded address as a map point. One point per address that has
+    both `lat` and `lon` — a company with two geocoded addresses yields two.
+    No pagination: the point set is the whole map."""
+    stmt = (
+        select(Address)
+        .where(Address.lat.is_not(None), Address.lon.is_not(None))
+        .options(selectinload(Address.company).selectinload(Company.names))
+        .order_by(Address.id)
+    )
+    addresses = (await session.scalars(stmt)).all()
+    return [
+        CompanyGeoPoint(
+            kvk_number=a.company.kvk_number,
+            name=_primary_name(a.company),
+            city=a.city,
+            lat=a.lat,
+            lon=a.lon,
+        )
+        for a in addresses
+    ]
 
 
 @router.get("/{kvk_number}", response_model=CompanyRead)

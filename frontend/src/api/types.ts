@@ -80,6 +80,15 @@ export interface CompanyListResponse {
   offset: number;
 }
 
+export interface CompanyGeoPoint {
+  kvk_number: string;
+  name: string;
+  city: string | null;
+  // Decimals serialize as JSON strings.
+  lat: string;
+  lon: string;
+}
+
 // ---- Website search & resolution ----
 
 export interface WebsiteSearchDetail {

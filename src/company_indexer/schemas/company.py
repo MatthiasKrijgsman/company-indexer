@@ -38,3 +38,13 @@ class CompanyListResponse(BaseModel):
     items: list[CompanyRead]
     limit: int
     offset: int
+
+
+class CompanyGeoPoint(BaseModel):
+    """One geocoded address location for the map view."""
+
+    kvk_number: str
+    name: str
+    city: str | None
+    lat: Decimal
+    lon: Decimal

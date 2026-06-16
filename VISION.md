@@ -276,6 +276,14 @@ List companies with optional substring search on any associated name.
 }
 ```
 
+### `GET /companies/geo`
+
+Every geocoded address as a flat list of map points — one per address that has
+both `lat` and `lon` (a company with two geocoded addresses yields two points).
+Not paginated; backs the frontend map view.
+
+- `200 OK` — `CompanyGeoPoint[]` (`kvk_number`, `name`, `city?`, `lat`, `lon`).
+
 ### `GET /companies/{kvk_number}`
 
 Fetch a single company by KVK number.
@@ -437,6 +445,9 @@ Response models live in `schemas/`, separate from ORM models, built with
 `addresses: AddressRead[]`.
 
 **`CompanyNameRead`** — `name`, `type` (`statutory`/`trade`/`short`/`alias`).
+
+**`CompanyGeoPoint`** — `kvk_number`, `name` (statutory/first), `city?`, `lat`,
+`lon`.
 
 **`AddressRead`** — `street?`, `house_number?`, `postcode?`, `city?`, `country`,
 `lat?`, `lon?`, `geocoded_at?` (ISO-8601).
