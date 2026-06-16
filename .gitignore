@@ -159,3 +159,7 @@ out/
 /data/
 /data/scraped_html/
 
+# Frontend (dev-only UI in frontend/)
+node_modules/
+# frontend/dist is already covered by the bare `dist/` rule above.
+

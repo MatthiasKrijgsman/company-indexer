@@ -159,6 +159,10 @@ scrape jobs**, with geocoding as an independent branch.
 
 No auth, no worker, no KVK ingestion, no billing.
 
+A **development-only** web console for exercising these endpoints by hand lives
+in `frontend/` (React + Vite + Tailwind + react-query + `@matthiaskrijgsman/mat-ui`).
+It is not part of the product — see `frontend/README.md`.
+
 ---
 
 ## 4. Data model

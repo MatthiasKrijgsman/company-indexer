@@ -113,6 +113,24 @@ uvicorn company_indexer.api.app:app --reload
 Reset DB when models change: `docker compose down -v && docker compose up -d`
 then re-seed.
 
+## Frontend (dev only)
+
+`frontend/` is a **development-only** web console for driving the API by hand
+(browse companies + run the enrichment chain from the browser). Not part of the
+product — no auth, no deploy, no tests.
+
+- Stack: React 19 + Vite + Tailwind v4 + `@tanstack/react-query` +
+  `@matthiaskrijgsman/mat-ui` (the user's own component library).
+- Run: `cd frontend && npm install && npm run dev` (needs the API on :8000).
+  The Vite dev server proxies `/companies` → `localhost:8000`, so the backend
+  needs **no CORS** config. Don't add CORS middleware for the frontend's sake.
+- **`frontend/src/api/types.ts` is hand-maintained** — it mirrors the Pydantic
+  schemas in `schemas/`. There is no codegen, so when you change an API
+  response schema, update `types.ts` to match (it has a header comment saying
+  so). The react-query hooks live in `frontend/src/api/hooks.ts`; one
+  enrichment section component per step in `frontend/src/pages/sections.tsx`.
+- See `frontend/README.md` for details.
+
 ## Local env quirks
 
 - Host ports: Postgres on `5434`, Redis on `6380` (user has another Postgres

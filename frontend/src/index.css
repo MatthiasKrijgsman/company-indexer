@@ -1,0 +1,6 @@
+@import "@matthiaskrijgsman/mat-ui/style.css";
+@import "tailwindcss";
+
+body {
+  margin: 0;
+}

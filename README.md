@@ -41,6 +41,22 @@ Then:
 - `curl http://localhost:8000/companies/33014286`
 - `curl 'http://localhost:8000/companies?q=philips'`
 
+## Development frontend (optional)
+
+A dev-only web console for driving the API by hand (browse companies + run the
+enrichment chain from the browser) lives in [`frontend/`](frontend/) — React +
+Vite + Tailwind + react-query + `@matthiaskrijgsman/mat-ui`. With the API
+running:
+
+```bash
+cd frontend
+npm install
+npm run dev          # http://localhost:5173 (proxies /companies → :8000)
+```
+
+See [`frontend/README.md`](frontend/README.md). It is not part of the product —
+no auth, no deploy.
+
 ## Reset the database
 
 Schema currently comes from `Base.metadata.create_all` — so whenever models
