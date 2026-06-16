@@ -1,7 +1,8 @@
 import enum
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from company_indexer.db import Base
@@ -38,6 +39,11 @@ class CompanyWebsite(Base):
     confidence: Mapped[WebsiteConfidence] = mapped_column(website_confidence_enum)
     reason: Mapped[str] = mapped_column(String(1024))
     llm_model: Mapped[str] = mapped_column(String(64))
+    # LLM cost in EUR + token usage; null when no LLM call was made (e.g. no
+    # candidates, or the call errored before returning usage).
+    cost_eur: Mapped[Decimal | None] = mapped_column(Numeric(10, 5), nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

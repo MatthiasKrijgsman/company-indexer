@@ -13,6 +13,7 @@ import anthropic
 from pydantic import BaseModel
 
 from company_indexer.config import get_settings
+from company_indexer.pricing import LlmUsage, usage_from
 
 MODEL = "claude-haiku-4-5"
 MAX_CANDIDATES = 15
@@ -87,8 +88,13 @@ def _format_user_message(ctx: CompanyContext, candidates: list[dict[str, Any]]) 
     )
 
 
-async def resolve(ctx: CompanyContext, candidates: list[dict[str, Any]]) -> Resolution:
-    """Call Claude to pick the best candidate. Raises on SDK / API errors."""
+async def resolve(
+    ctx: CompanyContext, candidates: list[dict[str, Any]]
+) -> tuple[Resolution, LlmUsage]:
+    """Call Claude to pick the best candidate. Raises on SDK / API errors.
+
+    Returns the parsed pick plus the call's token usage (for cost accounting).
+    """
     client = _get_client()
     response = await client.messages.parse(
         model=MODEL,
@@ -103,4 +109,4 @@ async def resolve(ctx: CompanyContext, candidates: list[dict[str, Any]]) -> Reso
         messages=[{"role": "user", "content": _format_user_message(ctx, candidates)}],
         output_format=Resolution,
     )
-    return response.parsed_output
+    return response.parsed_output, usage_from(response)

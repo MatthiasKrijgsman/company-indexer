@@ -96,6 +96,8 @@ src/company_indexer/
 │                   discover, storage, orchestrator)
 ├── jobs/           Careers-URL resolver + job extractor (candidates,
 │                   resolver, extractor, orchestrator)
+├── pricing/        EUR cost accounting for Serper + Haiku (rates, usage,
+│                   estimates) — backs the frontend cost indicator
 ├── config.py       pydantic-settings reading .env
 └── db.py           Async engine, session factory, Base, create_all
 ```

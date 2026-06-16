@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from company_indexer.config import get_settings
 from company_indexer.jobs.resolver import CompanyContext
+from company_indexer.pricing import LlmUsage, usage_from
 
 MODEL = "claude-haiku-4-5"
 MAX_TOKENS = 4096
@@ -84,7 +85,8 @@ def _format_user_message(
 
 async def extract_jobs(
     ctx: CompanyContext, careers_url: str, markdown: str
-) -> list[JobItem]:
+) -> tuple[list[JobItem], LlmUsage]:
+    """Extract job postings. Returns the jobs plus the call's token usage."""
     client = _get_client()
     response = await client.messages.parse(
         model=MODEL,
@@ -104,4 +106,4 @@ async def extract_jobs(
         ],
         output_format=JobExtraction,
     )
-    return response.parsed_output.jobs
+    return response.parsed_output.jobs, usage_from(response)

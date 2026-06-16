@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -15,4 +16,7 @@ class WebsiteRead(BaseModel):
     confidence: WebsiteConfidence
     reason: str
     llm_model: str
+    cost_eur: Decimal | None
+    input_tokens: int | None
+    output_tokens: int | None
     created_at: datetime

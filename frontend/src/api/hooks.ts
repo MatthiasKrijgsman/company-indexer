@@ -11,6 +11,7 @@ import type {
   CompanyListResponse,
   CompanyRead,
   JobsScrapeRead,
+  Pricing,
   WebsiteRead,
   WebsiteScrapeRead,
   WebsiteSearchDetail,
@@ -20,6 +21,7 @@ const enc = encodeURIComponent;
 
 // Centralized query keys so mutations can invalidate precisely.
 export const keys = {
+  pricing: () => ["pricing"] as const,
   companies: (q: string, limit: number, offset: number) =>
     ["companies", { q, limit, offset }] as const,
   company: (kvk: string) => ["company", kvk] as const,
@@ -44,6 +46,14 @@ function latestResultOptions<T>(): Partial<UseQueryOptions<T, ApiError>> {
 }
 
 // ---- Queries ----
+
+export function usePricing() {
+  return useQuery<Pricing, ApiError>({
+    queryKey: keys.pricing(),
+    queryFn: () => apiGet<Pricing>("/pricing"),
+    staleTime: Infinity, // static rate card
+  });
+}
 
 export function useCompanies(q: string, limit = 50, offset = 0) {
   return useQuery<CompanyListResponse, ApiError>({

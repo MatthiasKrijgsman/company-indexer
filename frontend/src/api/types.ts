@@ -88,6 +88,8 @@ export interface WebsiteSearchDetail {
   status: WebsiteSearchStatus;
   error: string | null;
   results: Record<string, unknown> | null;
+  // Decimals serialize as JSON strings.
+  cost_eur: string | null;
   created_at: string;
 }
 
@@ -99,6 +101,9 @@ export interface WebsiteRead {
   confidence: WebsiteConfidence;
   reason: string;
   llm_model: string;
+  cost_eur: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
   created_at: string;
 }
 
@@ -141,6 +146,9 @@ export interface CompanyCareersUrlRead {
   confidence: WebsiteConfidence;
   reason: string;
   llm_model: string;
+  cost_eur: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
   created_at: string;
 }
 
@@ -164,9 +172,33 @@ export interface JobsScrapeRead {
   http_status: number | null;
   content_hash: string | null;
   llm_model: string | null;
+  cost_eur: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
   error: string | null;
   started_at: string;
   finished_at: string | null;
   created_at: string;
   jobs: JobRead[];
+}
+
+// ---- Pricing (GET /pricing) ----
+
+export type CostAction =
+  | "website_search"
+  | "resolve_website"
+  | "scrape"
+  | "resolve_careers"
+  | "scrape_jobs"
+  | "geocode";
+
+export interface Pricing {
+  usd_to_eur: number;
+  rates_usd: {
+    serper_per_search: number;
+    haiku_per_mtok_input: number;
+    haiku_per_mtok_output: number;
+  };
+  // EUR estimate per action, serialized as strings.
+  estimates_eur: Record<CostAction, string>;
 }

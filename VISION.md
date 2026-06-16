@@ -81,6 +81,8 @@ src/company_indexer/
 │                   discover, storage, orchestrator)
 ├── jobs/           Careers-URL resolver + job extractor (candidates,
 │                   resolver, extractor, orchestrator)
+├── pricing/        EUR cost accounting (Serper + Haiku rates, token usage,
+│                   per-action estimates) — backs GET /pricing + cost columns
 ├── config.py       pydantic-settings reading .env
 └── db.py           Async engine, session factory, Base, create_all
 ```
@@ -410,6 +412,22 @@ but still get `geocoded_at` stamped.
 - `502 Bad Gateway` — one or more PDOK calls failed at the network level. Partial
   successes are still committed.
 
+### `GET /pricing`
+
+Static rate card + per-action EUR cost estimates for the cost indicator.
+Derived from the configured `USD_TO_EUR` rate (default `0.92`, no live FX) and
+the provider rates in `pricing/pricing.py` (Serper ~$0.001/search; Claude Haiku
+4.5 $1/$5 per MTok in/out).
+
+- `200 OK` — `{ usd_to_eur, rates_usd, estimates_eur: { website_search,
+  resolve_website, scrape, resolve_careers, scrape_jobs, geocode } }`.
+
+**Cost accounting.** The two paid steps record their actual EUR cost on the
+persisted row: `WebsiteSearch.cost_eur` (Serper flat, set only on success) and
+`CompanyWebsite` / `CompanyCareersUrl` / `JobsScrape` (`cost_eur` +
+`input_tokens` / `output_tokens` from the Haiku call, null when no LLM call ran).
+`scrape` and `geocode` are free.
+
 ### Response schemas
 
 Response models live in `schemas/`, separate from ORM models, built with
@@ -424,10 +442,11 @@ Response models live in `schemas/`, separate from ORM models, built with
 `lat?`, `lon?`, `geocoded_at?` (ISO-8601).
 
 **`WebsiteSearchDetail`** — `id`, `query`, `status` (`success`/`failed`),
-`error?`, `results?` (raw Serper JSON), `created_at`.
+`error?`, `results?` (raw Serper JSON), `cost_eur?`, `created_at`.
 
 **`WebsiteRead`** — `id`, `source_search_id`, `url?`, `homepage_url?`,
-`confidence` (`high`/`medium`/`low`/`none`), `reason`, `llm_model`, `created_at`.
+`confidence` (`high`/`medium`/`low`/`none`), `reason`, `llm_model`, `cost_eur?`,
+`input_tokens?`, `output_tokens?`, `created_at`.
 
 **`WebsiteScrapeRead`** — `id`, `source_website_id`, `status`,
 `pages_attempted`, `pages_ok`, `pages_failed`, `error?`, `started_at`,
@@ -438,11 +457,13 @@ Response models live in `schemas/`, separate from ORM models, built with
 `fetched_at`. (`html_path` is internal — not exposed.)
 
 **`CompanyCareersUrlRead`** — `id`, `source_scrape_id`, `url?`, `confidence`,
-`reason`, `llm_model`, `created_at`.
+`reason`, `llm_model`, `cost_eur?`, `input_tokens?`, `output_tokens?`,
+`created_at`.
 
 **`JobsScrapeRead`** — `id`, `source_careers_id`, `fetched_url`, `status`,
-`http_status?`, `content_hash?`, `llm_model?`, `error?`, `started_at`,
-`finished_at?`, `created_at`, `jobs: JobRead[]`. (`html_path` not exposed.)
+`http_status?`, `content_hash?`, `llm_model?`, `cost_eur?`, `input_tokens?`,
+`output_tokens?`, `error?`, `started_at`, `finished_at?`, `created_at`,
+`jobs: JobRead[]`. (`html_path` not exposed.)
 
 **`JobRead`** — `id`, `title`, `url?`, `careers_url`, `location?`,
 `employment_type` (`full_time`/`part_time`/`contract`/`internship`/`unknown`),

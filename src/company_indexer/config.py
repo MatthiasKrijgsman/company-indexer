@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     serper_api_key: str = Field(default="")
     anthropic_api_key: str = Field(default="")
     scraped_html_dir: str = Field(default="data/scraped_html")
+    # Static USD→EUR rate for the enrichment cost indicator (no live FX).
+    usd_to_eur: float = Field(default=0.92)
 
 
 @lru_cache(maxsize=1)

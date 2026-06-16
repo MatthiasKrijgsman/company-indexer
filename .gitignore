@@ -7,16 +7,18 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+# Root-anchored so they only match Python build artifacts at the repo root and
+# don't catch the frontend's source dirs (e.g. frontend/src/lib/, .../build/).
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
+/build/
+/develop-eggs/
+/dist/
+/downloads/
+/eggs/
+/.eggs/
+/lib/
+/lib64/
+/parts/
 sdist/
 var/
 wheels/
@@ -161,5 +163,5 @@ out/
 
 # Frontend (dev-only UI in frontend/)
 node_modules/
-# frontend/dist is already covered by the bare `dist/` rule above.
+frontend/dist/
 

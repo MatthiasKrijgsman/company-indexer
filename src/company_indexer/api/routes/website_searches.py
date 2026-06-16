@@ -25,6 +25,7 @@ from company_indexer.models import (
     WebsiteSearch,
     WebsiteSearchStatus,
 )
+from company_indexer import pricing
 from company_indexer.schemas.company_website import WebsiteRead
 from company_indexer.schemas.website_search import WebsiteSearchDetail
 from company_indexer.serper.client import search as serper_search
@@ -88,6 +89,7 @@ async def trigger_website_search(
         status=WebsiteSearchStatus.SUCCESS if result.ok else WebsiteSearchStatus.FAILED,
         error=result.error,
         results=result.results,
+        cost_eur=pricing.serper_cost_eur() if result.ok else None,
     )
     session.add(record)
     await session.commit()
@@ -173,6 +175,7 @@ async def resolve_website_endpoint(
 
     llm_model = ""
     llm_error: str | None = None
+    usage: pricing.LlmUsage | None = None
 
     if not candidates:
         url: str | None = None
@@ -180,7 +183,7 @@ async def resolve_website_endpoint(
         reason = "no search candidates"
     else:
         try:
-            resolution = await resolve(ctx, candidates)
+            resolution, usage = await resolve(ctx, candidates)
             llm_model = RESOLVER_MODEL
             url = resolution.website
             reason = resolution.reason
@@ -205,6 +208,9 @@ async def resolve_website_endpoint(
         confidence=confidence,
         reason=reason,
         llm_model=llm_model,
+        cost_eur=pricing.llm_cost_eur(usage) if usage else None,
+        input_tokens=usage.input_tokens if usage else None,
+        output_tokens=usage.output_tokens if usage else None,
     )
     session.add(record)
     await session.commit()

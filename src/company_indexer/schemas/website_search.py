@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -14,4 +15,5 @@ class WebsiteSearchDetail(BaseModel):
     status: WebsiteSearchStatus
     error: str | None
     results: dict[str, Any] | None
+    cost_eur: Decimal | None
     created_at: datetime

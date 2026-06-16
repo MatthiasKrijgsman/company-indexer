@@ -1,7 +1,8 @@
 import enum
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from company_indexer.db import Base
@@ -56,6 +57,10 @@ class CompanyCareersUrl(Base):
     confidence: Mapped[WebsiteConfidence] = mapped_column(website_confidence_enum)
     reason: Mapped[str] = mapped_column(String(512))
     llm_model: Mapped[str] = mapped_column(String(64))
+    # LLM cost in EUR + token usage; null when no LLM call was made.
+    cost_eur: Mapped[Decimal | None] = mapped_column(Numeric(10, 5), nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -80,6 +85,11 @@ class JobsScrape(Base):
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     html_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     llm_model: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # LLM cost in EUR + token usage; null when no LLM call was made (fetch
+    # failed, blocked, js_required, or empty page short-circuited extraction).
+    cost_eur: Mapped[Decimal | None] = mapped_column(Numeric(10, 5), nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error: Mapped[str | None] = mapped_column(String(64), nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(

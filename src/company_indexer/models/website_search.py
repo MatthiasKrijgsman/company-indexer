@@ -1,8 +1,9 @@
 import enum
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -33,6 +34,8 @@ class WebsiteSearch(Base):
     status: Mapped[WebsiteSearchStatus] = mapped_column(website_search_status_enum)
     error: Mapped[str | None] = mapped_column(String(64), nullable=True)
     results: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Serper cost in EUR; null when the search failed (no credit charged).
+    cost_eur: Mapped[Decimal | None] = mapped_column(Numeric(10, 5), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

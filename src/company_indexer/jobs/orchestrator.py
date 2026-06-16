@@ -12,6 +12,7 @@ from pathlib import Path
 import anthropic
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from company_indexer import pricing
 from company_indexer.jobs import extractor, resolver
 from company_indexer.jobs.candidates import Candidate, build_candidates
 from company_indexer.models import (
@@ -93,12 +94,13 @@ async def resolve_careers_url(
     confidence = WebsiteConfidence.NONE
     reason = ""
     llm_model = ""
+    usage: pricing.LlmUsage | None = None
 
     if not candidates:
         reason = "no_candidates"
     else:
         try:
-            pick = await resolver.pick_careers_url(ctx, candidates)
+            pick, usage = await resolver.pick_careers_url(ctx, candidates)
             llm_model = resolver.MODEL
             url = pick.chosen_url
             reason = pick.reason
@@ -117,6 +119,9 @@ async def resolve_careers_url(
         confidence=confidence,
         reason=reason,
         llm_model=llm_model,
+        cost_eur=pricing.llm_cost_eur(usage) if usage else None,
+        input_tokens=usage.input_tokens if usage else None,
+        output_tokens=usage.output_tokens if usage else None,
     )
     session.add(record)
     await session.commit()
@@ -199,10 +204,13 @@ async def scrape_jobs(
         return jobs_scrape
 
     try:
-        items = await extractor.extract_jobs(
+        items, usage = await extractor.extract_jobs(
             ctx, careers.url, extracted.markdown
         )
         jobs_scrape.llm_model = extractor.MODEL
+        jobs_scrape.cost_eur = pricing.llm_cost_eur(usage)
+        jobs_scrape.input_tokens = usage.input_tokens
+        jobs_scrape.output_tokens = usage.output_tokens
     except (anthropic.APIError, ValueError) as e:
         jobs_scrape.status = JobsScrapeStatus.LLM_ERROR
         jobs_scrape.error = f"extractor_error: {type(e).__name__}"

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   Button,
   PanelField,
@@ -21,6 +22,7 @@ import {
   useGeocode,
   useJobs,
   useLatestScrape,
+  usePricing,
   useResolveCareers,
   useResolveWebsite,
   useRunWebsiteSearch,
@@ -29,10 +31,36 @@ import {
   useWebsite,
   useWebsiteSearches,
 } from "../api/hooks.ts";
-import type { CompanyRead, JobRead } from "../api/types.ts";
+import type { CompanyRead, CostAction, JobRead } from "../api/types.ts";
+import { CostTag } from "../components/CostTag.tsx";
 import { ErrorNote, NotRunYet, Section } from "../components/Section.tsx";
 import { StatusBadge } from "../components/StatusBadge.tsx";
 import { addressLine, formatDateTime } from "../lib/format.ts";
+
+// Pre-run estimate chip for an action, or a muted "free" when it costs nothing.
+function EstTag({ action }: { action: CostAction }) {
+  const { data: pricing } = usePricing();
+  const est = pricing?.estimates_eur[action];
+  if (est === undefined) return null;
+  if (Number(est) === 0) return <span className="text-xs text-gray-400">free</span>;
+  return <CostTag value={est} variant="est" />;
+}
+
+// The action-header cluster: estimate chip + run button.
+function Actions({
+  action,
+  children,
+}: {
+  action: CostAction;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <EstTag action={action} />
+      {children}
+    </div>
+  );
+}
 
 // A "run this step" button wired to a mutation's pending/error state.
 function RunButton({
@@ -79,7 +107,11 @@ export function WebsiteSearchSection({ kvk }: { kvk: string }) {
     <Section
       title="1 · Website search"
       description="Serper Google search for the KVK number; raw results stored."
-      action={<RunButton mutation={mutation} kvk={kvk} label="Run search" />}
+      action={
+        <Actions action="website_search">
+          <RunButton mutation={mutation} kvk={kvk} label="Run search" />
+        </Actions>
+      }
     >
       <ErrorNote error={mutation.error} />
       {!latest ? (
@@ -94,6 +126,9 @@ export function WebsiteSearchSection({ kvk }: { kvk: string }) {
           </PanelField>
           <PanelField label="Attempts" orientation="horizontal">
             {query.data?.length}
+          </PanelField>
+          <PanelField label="Cost" orientation="horizontal">
+            <CostTag value={latest.cost_eur} />
           </PanelField>
           <PanelField label="When" orientation="horizontal">
             {formatDateTime(latest.created_at)}
@@ -118,7 +153,11 @@ export function ResolveWebsiteSection({ kvk }: { kvk: string }) {
     <Section
       title="2 · Resolve website"
       description="LLM picks the company's own homepage from the search results."
-      action={<RunButton mutation={mutation} kvk={kvk} label="Resolve" />}
+      action={
+        <Actions action="resolve_website">
+          <RunButton mutation={mutation} kvk={kvk} label="Resolve" />
+        </Actions>
+      }
     >
       <ErrorNote error={mutation.error} />
       {!w ? (
@@ -140,8 +179,12 @@ export function ResolveWebsiteSection({ kvk }: { kvk: string }) {
           <PanelField label="Reason" orientation="horizontal">
             {w.reason}
           </PanelField>
-          <PanelField label="Model" orientation="horizontal">
-            {w.llm_model || "—"}
+          <PanelField label="Cost" orientation="horizontal">
+            <CostTag
+              value={w.cost_eur}
+              inputTokens={w.input_tokens}
+              outputTokens={w.output_tokens}
+            />
           </PanelField>
         </div>
       )}
@@ -159,7 +202,9 @@ export function ScrapeSection({ kvk }: { kvk: string }) {
       title="3 · Scrape homepage"
       description="Tier-1 httpx fetch; HTML to disk, markdown to the database."
       action={
-        <RunButton mutation={mutation} kvk={kvk} label="Scrape" />
+        <Actions action="scrape">
+          <RunButton mutation={mutation} kvk={kvk} label="Scrape" />
+        </Actions>
       }
     >
       <ErrorNote error={mutation.error} />
@@ -200,7 +245,11 @@ export function CareersSection({ kvk }: { kvk: string }) {
     <Section
       title="4 · Resolve careers URL"
       description="LLM picks a same-domain careers page from the homepage links."
-      action={<RunButton mutation={mutation} kvk={kvk} label="Resolve" />}
+      action={
+        <Actions action="resolve_careers">
+          <RunButton mutation={mutation} kvk={kvk} label="Resolve" />
+        </Actions>
+      }
     >
       <ErrorNote error={mutation.error} />
       {!c ? (
@@ -221,6 +270,13 @@ export function CareersSection({ kvk }: { kvk: string }) {
           </PanelField>
           <PanelField label="Reason" orientation="horizontal">
             {c.reason}
+          </PanelField>
+          <PanelField label="Cost" orientation="horizontal">
+            <CostTag
+              value={c.cost_eur}
+              inputTokens={c.input_tokens}
+              outputTokens={c.output_tokens}
+            />
           </PanelField>
         </div>
       )}
@@ -265,7 +321,9 @@ export function JobsSection({ kvk }: { kvk: string }) {
       title="5 · Scrape jobs"
       description="Fetch the careers page; LLM extracts open positions."
       action={
-        <RunButton mutation={mutation} kvk={kvk} label="Scrape jobs" />
+        <Actions action="scrape_jobs">
+          <RunButton mutation={mutation} kvk={kvk} label="Scrape jobs" />
+        </Actions>
       }
     >
       <ErrorNote error={mutation.error} />
@@ -283,6 +341,13 @@ export function JobsSection({ kvk }: { kvk: string }) {
               getRowId={(j) => j.id}
             />
           )}
+          <PanelField label="Cost" orientation="horizontal">
+            <CostTag
+              value={scrape.cost_eur}
+              inputTokens={scrape.input_tokens}
+              outputTokens={scrape.output_tokens}
+            />
+          </PanelField>
           <PanelField label="When" orientation="horizontal">
             {formatDateTime(scrape.created_at)}
           </PanelField>
@@ -305,7 +370,11 @@ export function GeocodeSection({
     <Section
       title="6 · Geocode"
       description="PDOK Locatieserver fills lat/lon for each address."
-      action={<RunButton mutation={mutation} kvk={kvk} label="Geocode" />}
+      action={
+        <Actions action="geocode">
+          <RunButton mutation={mutation} kvk={kvk} label="Geocode" />
+        </Actions>
+      }
     >
       <ErrorNote error={mutation.error} />
       <div className="space-y-2 text-sm">

@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -18,6 +19,9 @@ class CompanyCareersUrlRead(BaseModel):
     confidence: WebsiteConfidence
     reason: str
     llm_model: str
+    cost_eur: Decimal | None
+    input_tokens: int | None
+    output_tokens: int | None
     created_at: datetime
 
 
@@ -45,6 +49,9 @@ class JobsScrapeRead(BaseModel):
     http_status: int | None
     content_hash: str | None
     llm_model: str | None
+    cost_eur: Decimal | None
+    input_tokens: int | None
+    output_tokens: int | None
     error: str | None
     started_at: datetime
     finished_at: datetime | None

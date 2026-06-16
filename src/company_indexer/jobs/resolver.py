@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from company_indexer.config import get_settings
 from company_indexer.jobs.candidates import Candidate
+from company_indexer.pricing import LlmUsage, usage_from
 
 MODEL = "claude-haiku-4-5"
 MAX_TOKENS = 512
@@ -84,8 +85,11 @@ def _format_user_message(
 
 async def pick_careers_url(
     ctx: CompanyContext, candidates: list[Candidate]
-) -> CareersPick:
-    """Call Claude to pick the best candidate. Raises on SDK / API errors."""
+) -> tuple[CareersPick, LlmUsage]:
+    """Call Claude to pick the best candidate. Raises on SDK / API errors.
+
+    Returns the parsed pick plus the call's token usage (for cost accounting).
+    """
     client = _get_client()
     response = await client.messages.parse(
         model=MODEL,
@@ -100,4 +104,4 @@ async def pick_careers_url(
         messages=[{"role": "user", "content": _format_user_message(ctx, candidates)}],
         output_format=CareersPick,
     )
-    return response.parsed_output
+    return response.parsed_output, usage_from(response)
