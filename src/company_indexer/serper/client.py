@@ -21,7 +21,10 @@ async def search(query: str, api_key: str) -> SerperResult:
     short, stable code the route can persist: ``no_credits``, ``unauthorized``,
     ``http_{status}``, ``timeout``, ``network_error``.
     """
-    payload = {"q": query, "num": 20}
+    # num=10 is the most a Serper free account allows; higher values are a paid
+    # feature and Serper rejects them with HTTP 400 ("Query pattern not allowed
+    # for free accounts"). 10 results is plenty for the resolve step.
+    payload = {"q": query, "num": 10}
     headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
     try:
         async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
