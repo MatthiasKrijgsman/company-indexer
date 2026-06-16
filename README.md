@@ -1,10 +1,11 @@
 # company-indexer
 
-Data warehouse and API for Dutch company data. See `initial-description.md` for the
-long-term vision and `mvp-plan.md` for the scope of the current slice.
+Data warehouse and API for Dutch company data. See [`VISION.md`](VISION.md) for the
+product vision, architecture, current state, full API reference, and roadmap.
 
-The MVP exposes two read-only endpoints backed by Postgres. Redis is running in
-infra but not yet used. No auth (local-only for now).
+Backed by Postgres: a read API plus an inline enrichment chain (website search →
+resolve website → scrape homepage → resolve careers URL → scrape jobs, plus
+geocoding). Redis is running in infra but not yet used. No auth (local-only for now).
 
 ## Prerequisites
 
@@ -60,6 +61,14 @@ src/company_indexer/
 ├── models/         SQLAlchemy models
 ├── schemas/        Pydantic response models
 ├── scripts/        Manual scripts (seed, etc.)
+├── serper/         Serper.dev search client
+├── llm/            Anthropic-backed website resolver
+├── pdok/           PDOK Locatieserver geocoding client
+├── scraper/        Tier-1 httpx website scraper
+├── jobs/           Careers-URL resolver + job extractor
 ├── config.py       Settings loaded from .env
 └── db.py           Async engine + session factory
 ```
+
+See [`VISION.md`](VISION.md) for the full API reference and the design of each
+enrichment package.

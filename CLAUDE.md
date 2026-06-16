@@ -7,31 +7,41 @@ Orientation for Claude Code sessions on this repo.
 A data warehouse + HTTP API for Dutch company data (KVK). Long-term, it will
 ingest from the KVK API, enrich companies on-demand via a worker (geocoding,
 Serper search, website fetching, LLM extraction), and serve a paid API. Right
-now only a small slice is built.
+now the read API plus a full inline enrichment chain is built; worker, KVK
+ingestion, and billing are not.
 
-## Plan documents
+## Project docs
 
-Three plan files in the repo root, read from most-specific to least:
+- `VISION.md` — the single source of truth: product vision, architecture,
+  what's built today, the data model, the full API reference, and the roadmap
+  of future slices. Read this first; if a task conflicts with its "What's
+  built" or "Conventions" sections, raise it.
+- `README.md` — local run book.
+- This file — short orientation for coding sessions.
 
-- `mvp-plan.md` — the slice currently being implemented. Treat this as the
-  source of truth for "what's in / what's out right now."
-- `initial-plan.md` — fuller architecture, including everything deferred from
-  the MVP (worker, enrichment, scraper).
-- `initial-description.md` — the original one-pager describing the product.
+(The old split plan/doc files — `initial-description.md`, `initial-plan.md`,
+`mvp-plan.md`, `plan-scrape.md`, `plan-jobs.md`, `docs.md` — were consolidated
+into `VISION.md`.)
 
-If a task conflicts with `mvp-plan.md`, raise it — the plan is deliberate.
+## Current scope (what's actually built)
 
-## Current scope (MVP — what's actually built)
+The enrichment chain runs **sync inline** (no worker): search → resolve website
+→ scrape homepage → resolve careers URL → scrape jobs, plus geocoding as an
+independent branch.
 
 - Postgres + Redis via `docker-compose.yml` (local only).
 - SQLAlchemy 2 async models:
   - `Company`, `CompanyName` + `NameType` enum, `Address` (with nullable
     `lat`/`lon`/`geocoded_at`) — in `models/company.py`.
-  - `WebsiteSearch` + `WebsiteSearchStatus` enum — in
-    `models/website_search.py`. Stores each Serper attempt (raw JSON).
-  - `CompanyWebsite` + `WebsiteConfidence` enum — in
-    `models/company_website.py`. Stores each LLM resolution (history, not
-    overwrite).
+  - `WebsiteSearch` + `WebsiteSearchStatus` enum — `models/website_search.py`.
+    Stores each Serper attempt (raw JSON).
+  - `CompanyWebsite` + `WebsiteConfidence` enum — `models/company_website.py`.
+    Stores each LLM website resolution (history, not overwrite).
+  - `WebsiteScrape` / `WebsitePage` (+ status & fetch-method enums) —
+    `models/website_scrape.py`. One scrape + its page rows; markdown in
+    Postgres, raw HTML on disk.
+  - `CompanyCareersUrl`, `JobsScrape`, `Job` (+ enums) — `models/jobs.py`.
+    Careers-URL resolution and extracted job postings.
 - Schema comes from `Base.metadata.create_all` (no Alembic yet — drop the
   volume and re-seed when models change).
 - `scripts/seed_companies.py` — idempotent manual seed.
@@ -43,12 +53,19 @@ If a task conflicts with `mvp-plan.md`, raise it — the plan is deliberate.
   - `POST /companies/{kvk}/resolve-website` + `GET .../website` — Claude
     Haiku 4.5 picks the likely homepage from stored Serper candidates;
     always inserts a new `CompanyWebsite` row.
+  - `POST /companies/{kvk}/scrape` + `GET .../scrape` + `GET .../scrapes` —
+    Tier-1 httpx homepage scrape (real-browser headers, JS/block detection),
+    HTML to disk + markdown to Postgres.
+  - `POST /companies/{kvk}/resolve-careers` + `GET .../careers-url` — Haiku
+    picks the careers page from same-domain homepage links.
+  - `POST /companies/{kvk}/scrape-jobs` + `GET .../jobs` +
+    `GET .../jobs-history` — fetch careers page, Haiku extracts open positions.
   - `POST /companies/{kvk}/geocode` — PDOK Locatieserver populates every
     address's `lat`/`lon`/`geocoded_at` (address-level matches only).
 - No auth. No worker. No KVK ingestion.
 
-Redis is in compose so slice 2 doesn't touch infra, but no MVP code connects
-to it yet.
+Redis is in compose so the future worker slice doesn't touch infra, but no
+code connects to it yet.
 
 ## Stack
 
@@ -56,9 +73,10 @@ to it yet.
 - FastAPI + uvicorn
 - SQLAlchemy 2 (async) + asyncpg + greenlet
 - Pydantic v2 + pydantic-settings
-- httpx (outbound calls to Serper + PDOK)
+- httpx[http2] (outbound calls to Serper, PDOK, website scraping)
 - anthropic (async Claude SDK) — Haiku 4.5 is the default for structured
   extraction
+- trafilatura (HTML → markdown), beautifulsoup4 (link parsing)
 - redis-py (reserved, unused)
 - ruff for lint (see `pyproject.toml`)
 
@@ -67,12 +85,17 @@ to it yet.
 ```
 src/company_indexer/
 ├── api/            FastAPI app, routes, deps
+│   └── routes/     companies, website_searches, geocoding, scrapes, jobs
 ├── models/         SQLAlchemy models
 ├── schemas/        Pydantic response models
 ├── scripts/        Manual scripts (seed, etc.)
 ├── serper/         Serper.dev client + excluded-domains helper
 ├── llm/            Anthropic-backed website resolver
 ├── pdok/           PDOK Locatieserver geocoding client
+├── scraper/        Tier-1 httpx scraper (headers, fetch, detect, extract,
+│                   discover, storage, orchestrator)
+├── jobs/           Careers-URL resolver + job extractor (candidates,
+│                   resolver, extractor, orchestrator)
 ├── config.py       pydantic-settings reading .env
 └── db.py           Async engine, session factory, Base, create_all
 ```
@@ -111,14 +134,27 @@ then re-seed.
   `__table_args__`.
 - The `NameType` Postgres enum is declared once as `name_type_enum` and
   reused — don't let SQLAlchemy auto-generate a new type per column.
-  Same pattern for `website_search_status_enum` and
-  `website_confidence_enum`.
-- External API clients live in their own top-level package (`serper/`,
-  `pdok/`, `llm/`). Each exposes an async call returning a typed
+  Same pattern for the other native enums (`website_search_status_enum`,
+  `website_confidence_enum`, `website_scrape_status_enum`,
+  `website_page_*_enum`, `jobs_scrape_status_enum`,
+  `job_employment_type_enum`).
+- Enrichment steps are **append-only**: each attempt inserts a new row
+  (never overwrite); queries are "latest by `created_at`". A failed or
+  null attempt is still persisted — the status enums are the log, there's
+  no separate log table.
+- External clients + the internal enrichment packages (`serper/`, `pdok/`,
+  `llm/`, `scraper/`, `jobs/`) each expose async calls returning a typed
   dataclass with `ok: bool` + `error: str | None` + the payload. Never
   raise on HTTP errors — the caller inspects `ok` and maps it to an HTTP
   status. Error codes are short strings (`timeout`, `no_credits`,
   `no_match`, `http_{n}`) that are safe to persist and match on.
+- Raw HTML lives on the filesystem under `SCRAPED_HTML_DIR` (default
+  `data/scraped_html/`); only `storage.py` touches the filesystem. The DB
+  stores a path **relative to the root** (`html_path`). Extracted markdown
+  lives in Postgres. `html_path` is internal — never exposed on a `*Read`
+  schema.
+- Enrichment that needs an LLM uses the two-cheap-calls pattern (locate
+  then extract), each a separate Haiku call — not one expensive agent.
 - LLM calls use `anthropic.AsyncAnthropic` + `messages.parse()` with a
   Pydantic output model. Put a frozen, verbatim system prompt in
   `system=[{..., "cache_control": {"type": "ephemeral"}}]` — the marker
@@ -127,22 +163,30 @@ then re-seed.
   returning null + a `none`/`low`-confidence marker over guessing.
   A wrong answer is worse than no answer.
 - Enrichment endpoints are sync inline in the request path for now. When
-  moved to a worker (future slice), the provider clients in `serper/` /
-  `llm/` / `pdok/` should port over untouched.
+  moved to a worker (future slice), the provider packages (`serper/`,
+  `llm/`, `pdok/`, `scraper/`, `jobs/`) should port over untouched.
 - Keep code boring and readable; this will be worked on by humans.
-- When adding new endpoints to the API, document them in `docs.md`.
+- When adding new endpoints to the API, document them in the API reference
+  section of `VISION.md`.
 
 ## What NOT to add yet
 
-Per `mvp-plan.md`, the following are explicitly deferred — don't introduce
+Per `VISION.md`, the following are explicitly deferred — don't introduce
 them unless the user asks:
 
 - Alembic / migrations
 - RQ / worker process — enrichment lives inline in request handlers for
   now. A unified `enrichment/` package or generic `POST .../enrich`
-  endpoint is also not built yet; current endpoints are per-action
-  (`/website-search`, `/resolve-website`, `/geocode`).
-- KVK scraper / ingestion
+  dispatcher is also not built yet; current endpoints are per-action
+  (`/website-search`, `/resolve-website`, `/scrape`, `/resolve-careers`,
+  `/scrape-jobs`, `/geocode`).
+- KVK API scraper / ingestion (manual seed only for now)
+- Website-scrape Tier 2 (Jina/Firecrawl/Playwright) and subpage discovery —
+  current scraper is Tier-1 httpx, homepage only.
+- Jobs: external ATS / off-domain careers pages — current slice is
+  same-domain only.
 - API tokens, call logging, billing
 - Dockerfile for the app itself
 - A big test suite (smoke tests are fine)
+
+See the Roadmap section of `VISION.md` for the planned shape of each.
