@@ -41,6 +41,20 @@ Then:
 - `curl http://localhost:8000/companies/33014286`
 - `curl 'http://localhost:8000/companies?q=philips'`
 
+## Bulk import from a KVK SQLite dump
+
+To load a large set of companies from a KVK SQLite extract (default
+`data/companies/companies.sqlite`), import only the BV (Besloten Vennootschap)
+companies — statutory + trade names and one primary address each — into Postgres:
+
+```bash
+python -m company_indexer.scripts.import_companies            # full import
+python -m company_indexer.scripts.import_companies --limit 1000   # smoke test
+```
+
+Idempotent and resumable (skips companies already present by KVK number). See the
+module docstring for the exact field mapping.
+
 ## Development frontend (optional)
 
 A dev-only web console for driving the API by hand (browse companies + run the
