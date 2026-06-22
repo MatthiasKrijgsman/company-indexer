@@ -8,6 +8,7 @@ candidates look right.
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlparse
 
 import anthropic
 from pydantic import BaseModel
@@ -19,13 +20,16 @@ from company_indexer.pricing import LlmUsage, usage_from
 MODEL = "claude-haiku-4-5"
 MAX_TOKENS = 512
 
-SYSTEM_PROMPT = """You identify a Dutch company's careers / vacancies page from a list of same-domain link candidates taken from the company's homepage.
+SYSTEM_PROMPT = """You identify a Dutch company's careers / vacancies page from a list of link candidates taken from the company's homepage.
 
-The candidates all live on the company's own website. Your job is to pick the single URL most likely to be the page where open job positions are listed — typically titled "Vacatures", "Werken bij", "Careers", "Jobs", "Over/werken", or similar.
+Your job is to pick the single URL most likely to be the page where this company's open job positions are listed — typically titled "Vacatures", "Werken bij", "Careers", "Jobs", "Over/werken", or similar.
+
+Candidates may be on the company's own website OR external. A careers page often lives off the main domain — a "werkenbij" subdomain (e.g. werkenbij.acme.nl), a dedicated werkenbij domain (e.g. werkenbijacme.nl), or an applicant-tracking system / job board the company uses (Recruitee, Homerun, Workable, Greenhouse, Lever, Personio, Teamtailor, and similar). Each candidate is tagged "[same-site]" or "[external: <host>]". An external page is a valid pick when it clearly hosts THIS company's vacancies.
 
 Signals to weigh:
 - Anchor text and URL path are both informative. "Vacatures" in the anchor is a stronger signal than the path alone.
 - Prefer listing/index pages over deep article pages. A path like /vacatures or /werken-bij scores higher than /nieuws/we-zoeken-een-developer.
+- For external candidates, prefer those clearly tied to this company (its name in the host or path, or a known ATS). Be cautious: do NOT pick unrelated third-party links such as generic social profiles, partner sites, cookie/login/portal pages, or a job board's homepage that isn't scoped to this company.
 - If candidates are all generic ("/over-ons", "/team") with no clear careers marker, return null.
 
 Return JSON with three fields:
@@ -70,7 +74,10 @@ def _format_user_message(
         blocks = []
         for i, c in enumerate(candidates, start=1):
             anchor = c.anchor_text or "(no anchor text)"
-            blocks.append(f"{i}. {c.url}\n   anchor: {anchor}\n   score: {c.score}")
+            origin = f"[external: {urlparse(c.url).netloc}]" if c.is_external else "[same-site]"
+            blocks.append(
+                f"{i}. {origin} {c.url}\n   anchor: {anchor}\n   score: {c.score}"
+            )
         candidates_text = "\n".join(blocks)
 
     return (

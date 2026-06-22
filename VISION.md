@@ -148,9 +148,14 @@ scrape jobs**, with geocoding as an independent branch.
    JS/block detection, raw HTML to disk under `SCRAPED_HTML_DIR`, markdown +
    title to Postgres. **Homepage only** (subpage discovery deferred).
 4. **Resolve careers URL** — `POST /companies/{kvk}/resolve-careers` +
-   `GET .../careers-url`. Deterministic same-domain candidate building from the
-   homepage HTML (keyword-scored `<a>` links + fallback paths), then a Haiku
-   pick. Inserts a `CompanyCareersUrl` row; null is valid.
+   `GET .../careers-url`. Candidate building from the homepage HTML
+   (keyword-scored `<a>` links + fallback paths) covering the company's own
+   pages **and** qualifying external careers links (a `werkenbij` subdomain, a
+   dedicated werkenbij domain, or an ATS host). If the best on-domain careers
+   link is a thin landing page, it's **followed one level** to surface an
+   external werkenbij/ATS destination linked from it. A Haiku pick then judges
+   which — if any — is really this company's careers page. Inserts a
+   `CompanyCareersUrl` row; null is valid.
 5. **Scrape jobs** — `POST /companies/{kvk}/scrape-jobs` + `GET .../jobs` +
    `GET .../jobs-history`. Fetches the careers page, extracts markdown, runs
    Haiku to enumerate open positions. Inserts a `JobsScrape` + one `Job` per
@@ -213,7 +218,8 @@ class, not in `__table_args__`.
 
 - **CompanyCareersUrl** — one row per careers-URL resolution. `source_scrape_id`
   FK to the `WebsiteScrape` whose homepage HTML was read; nullable `url`
-  (null = no same-domain careers page); reuses `website_confidence` enum.
+  (null = no careers page found, on- or off-domain); reuses `website_confidence`
+  enum.
 - **JobsScrape** + `JobsScrapeStatus` enum (`ok`, `no_jobs`, `no_careers_page`,
   `js_required`, `blocked`, `failed`, `llm_error`) — one row per extraction
   attempt, `source_careers_id` FK, `html_path` on disk.
@@ -360,12 +366,16 @@ Scrape history, newest first, each with its `pages` list.
 ### `POST /companies/{kvk_number}/resolve-careers`
 
 Builds candidate careers-page URLs from the homepage HTML of the latest `OK`
-`WebsiteScrape` (same-domain links keyword-scored against `vacature`, `werken`,
-`jobs`, `career` + a small fallback path list), then asks Claude Haiku 4.5 to pick
-the most likely careers page. Always inserts a new `CompanyCareersUrl` row. A null
-`url` with `confidence="none"` is a valid, first-class outcome. External ATS
-platforms (Recruitee, Homerun, …) are out of scope this slice — off-domain links
-are dropped.
+`WebsiteScrape` — the company's own pages (keyword-scored `<a>` links + a small
+fallback path list) plus qualifying **external** careers links admitted on
+list-free signals (a `werkenbij` subdomain on the same registrable domain, a
+careers keyword in the host, a strongly careers-labelled anchor, or a small ATS
+seed). When the best on-domain careers candidate is a thin landing page, that
+page is fetched and any external careers links on it are merged into the pool
+(one-level follow). Claude Haiku 4.5 then picks the page most likely to host this
+company's vacancies (it judges and may reject unrelated third-party links).
+Always inserts a new `CompanyCareersUrl` row. A null `url` with
+`confidence="none"` is a valid, first-class outcome.
 
 - `200 OK` — `CompanyCareersUrlRead`.
 - `400 Bad Request` — no `OK` website scrape on record. Call `POST .../scrape`
@@ -512,11 +522,22 @@ packages (`serper/`, `llm/`, `pdok/`, `scraper/`, `jobs/`) port over untouched.
 
 ### Jobs — later slices
 
-- **2 — ATS / external-domain careers pages.** Add an ATS hostname allowlist with
-  vendor detection; extend `CompanyCareersUrl` with `is_external_ats` +
-  `ats_vendor` (additive); candidate builder includes known ATS hosts; one-level
-  iframe follow for company-domain pages embedding an ATS.
-- **3 — Tier-2 rescue** for JS-heavy careers pages (depends on scrape Tier 2).
+- **2a — external careers links at resolve time (done).** Candidate building
+  admits `werkenbij` subdomains, dedicated werkenbij domains, and ATS hosts via
+  list-free signals + a tiny ATS seed; the Haiku resolver judges them. The
+  remaining Slice-2 pieces below stay deferred.
+- **2b — ATS vendor tagging + iframe follow.** Extend `CompanyCareersUrl` with
+  `is_external_ats` + `ats_vendor` (additive). *(One-level follow of an on-domain
+  careers landing page to its external werkenbij/ATS link is done; following an
+  ATS embedded in an `<iframe>` is still deferred.)*
+- **2c — self-learning ATS list.** At scale, an ATS host is one chosen as the
+  careers page for many distinct companies — aggregate `CompanyCareersUrl.url`
+  host × `count(distinct company_id)`, promote hosts above a threshold, cache,
+  and union into the seed. No schema change (we already persist what's needed);
+  removes any need to hand-curate the ATS list.
+- **3 — Tier-2 rescue** for JS-heavy careers pages (depends on scrape Tier 2);
+  many ATS pages are JS-rendered, so the resolved external URL may currently
+  fetch back as `js_required` until this lands.
 - **Later:** PDF job listings, cross-scrape diff (new/removed/re-opened jobs),
   job canonicalization + dedupe, employer-branding/benefits extraction.
 

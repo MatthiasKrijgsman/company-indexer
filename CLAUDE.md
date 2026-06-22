@@ -57,7 +57,10 @@ independent branch.
     Tier-1 httpx homepage scrape (real-browser headers, JS/block detection),
     HTML to disk + markdown to Postgres.
   - `POST /companies/{kvk}/resolve-careers` + `GET .../careers-url` — Haiku
-    picks the careers page from same-domain homepage links.
+    picks the careers page from homepage links: the company's own pages plus
+    qualifying external werkenbij/ATS links (admitted on list-free signals),
+    with a one-level follow of an on-domain careers landing page to its
+    external destination.
   - `POST /companies/{kvk}/scrape-jobs` + `GET .../jobs` +
     `GET .../jobs-history` — fetch careers page, Haiku extracts open positions.
   - `POST /companies/{kvk}/geocode` — PDOK Locatieserver populates every
@@ -203,8 +206,9 @@ them unless the user asks:
 - KVK API scraper / ingestion (manual seed only for now)
 - Website-scrape Tier 2 (Jina/Firecrawl/Playwright) and subpage discovery —
   current scraper is Tier-1 httpx, homepage only.
-- Jobs: external ATS / off-domain careers pages — current slice is
-  same-domain only.
+- Jobs: external werkenbij/ATS careers links are now considered at *resolve*
+  time (`jobs/candidates.py`), but ATS vendor tagging, iframe follow, and a
+  self-learning ATS list are deferred (see VISION roadmap).
 - API tokens, call logging, billing
 - Dockerfile for the app itself
 - A big test suite (smoke tests are fine)

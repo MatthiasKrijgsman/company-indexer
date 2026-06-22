@@ -14,7 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from company_indexer import pricing
 from company_indexer.jobs import extractor, resolver
-from company_indexer.jobs.candidates import Candidate, build_candidates
+from company_indexer.jobs.candidates import (
+    MAX_CANDIDATES,
+    MAX_EXTERNAL,
+    Candidate,
+    build_candidates,
+)
 from company_indexer.models import (
     Company,
     CompanyCareersUrl,
@@ -29,6 +34,7 @@ from company_indexer.models import (
 )
 from company_indexer.scraper import storage
 from company_indexer.scraper.detect import detect
+from company_indexer.scraper.discover import normalize_url
 from company_indexer.scraper.extract import extract
 from company_indexer.scraper.fetch import FetchResult, build_client, fetch
 from company_indexer.scraper.headers import pick_profile
@@ -76,6 +82,62 @@ def _homepage_page(scrape: WebsiteScrape) -> WebsitePage | None:
     return None
 
 
+def _merge_candidates(
+    base: list[Candidate], extra_external: list[Candidate]
+) -> list[Candidate]:
+    """Union `base` with followed-page external candidates, dedup by normalized
+    URL (keep higher score), then re-apply the on-domain-priority / external-cap
+    ranking used by `build_candidates`."""
+    by_url: dict[str, Candidate] = {}
+    for c in [*base, *extra_external]:
+        key = normalize_url(c.url)
+        prior = by_url.get(key)
+        if prior is None or c.score > prior.score:
+            by_url[key] = c
+
+    ranked = sorted(by_url.values(), key=lambda c: c.score, reverse=True)
+    result: list[Candidate] = []
+    external_kept = 0
+    for c in ranked:
+        if c.is_external:
+            if external_kept >= MAX_EXTERNAL:
+                continue
+            external_kept += 1
+        result.append(c)
+        if len(result) >= MAX_CANDIDATES:
+            break
+    return result
+
+
+async def _follow_for_externals(
+    company: Company, candidates: list[Candidate]
+) -> list[Candidate]:
+    """One-level follow: a company's own careers page is often a thin landing
+    page that links out to an external `werkenbij`/ATS site. Fetch the top
+    on-domain careers candidate (a real link, not a guessed fallback) and merge
+    any external careers links it contains into the pool, so the resolver can
+    pick the real external destination. Best-effort — network failures leave the
+    homepage candidates unchanged."""
+    followable = [c for c in candidates if not c.is_external and c.score > 1]
+    if not followable:
+        return candidates
+    target = max(followable, key=lambda c: c.score)
+
+    try:
+        async with build_client(pick_profile(company.id)) as client:
+            result = await fetch(client, target.url)
+    except Exception:
+        return candidates
+    if not result.ok or not result.html:
+        return candidates
+
+    sub = build_candidates(result.html, result.final_url or target.url)
+    externals = [c for c in sub if c.is_external]
+    if not externals:
+        return candidates
+    return _merge_candidates(candidates, externals)
+
+
 async def resolve_careers_url(
     session: AsyncSession, company: Company, scrape: WebsiteScrape
 ) -> CompanyCareersUrl:
@@ -89,6 +151,8 @@ async def resolve_careers_url(
     candidates: list[Candidate] = (
         build_candidates(homepage[1], homepage[0]) if homepage else []
     )
+    if candidates:
+        candidates = await _follow_for_externals(company, candidates)
 
     url: str | None = None
     confidence = WebsiteConfidence.NONE
