@@ -8,13 +8,27 @@ import tailwindcss from "@tailwindcss/vite";
 // `npm run dev`.
 const API_TARGET = "http://localhost:8000";
 
+// The SPA's client route `/companies/:kvk` collides with the proxied API path.
+// On client-side navigation React Router handles it; but on a hard load
+// (refresh / pasted URL) the browser fetches `/companies/123` from Vite, which
+// would proxy it to FastAPI and return raw JSON. The API client always sends
+// `Accept: application/json`, while document navigations send `text/html` — so
+// bounce HTML navigations back to index.html and let React Router take over.
+const apiProxy = {
+  target: API_TARGET,
+  changeOrigin: true,
+  bypass(req: { headers: { accept?: string } }) {
+    if (req.headers.accept?.includes("text/html")) return "/index.html";
+  },
+};
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
     proxy: {
-      "/companies": { target: API_TARGET, changeOrigin: true },
-      "/pricing": { target: API_TARGET, changeOrigin: true },
+      "/companies": apiProxy,
+      "/pricing": apiProxy,
     },
   },
 });
