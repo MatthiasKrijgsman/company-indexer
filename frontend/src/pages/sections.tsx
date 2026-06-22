@@ -32,10 +32,30 @@ import {
   useWebsiteSearches,
 } from "../api/hooks.ts";
 import type { CompanyRead, CostAction, JobRead } from "../api/types.ts";
+import { Collapsible } from "../components/Collapsible.tsx";
 import { CostTag } from "../components/CostTag.tsx";
 import { ErrorNote, NotRunYet, Section } from "../components/Section.tsx";
 import { StatusBadge } from "../components/StatusBadge.tsx";
 import { addressLine, formatDateTime } from "../lib/format.ts";
+
+// Pretty-printed JSON in a scrollable block — the raw output of a step.
+function JsonBlock({ data }: { data: unknown }) {
+  return (
+    <pre className="max-h-96 overflow-auto rounded bg-gray-50 p-2 font-mono text-xs leading-relaxed text-gray-700">
+      {JSON.stringify(data, null, 2)}
+    </pre>
+  );
+}
+
+// Scraped page text, wrapped — used for markdown output instead of JSON so
+// newlines render rather than showing up as escaped "\n".
+function TextBlock({ text }: { text: string }) {
+  return (
+    <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded bg-gray-50 p-2 font-mono text-xs leading-relaxed text-gray-700">
+      {text}
+    </pre>
+  );
+}
 
 // Pre-run estimate chip for an action, or a muted "free" when it costs nothing.
 function EstTag({ action }: { action: CostAction }) {
@@ -117,26 +137,33 @@ export function WebsiteSearchSection({ kvk }: { kvk: string }) {
       {!latest ? (
         <QueryState query={query} />
       ) : (
-        <div className="space-y-1 text-sm">
-          <PanelField label="Latest" orientation="horizontal">
-            <StatusBadge value={latest.status} />
-          </PanelField>
-          <PanelField label="Candidates" orientation="horizontal">
-            {organicCount(latest.results)}
-          </PanelField>
-          <PanelField label="Attempts" orientation="horizontal">
-            {query.data?.length}
-          </PanelField>
-          <PanelField label="Cost" orientation="horizontal">
-            <CostTag value={latest.cost_eur} />
-          </PanelField>
-          <PanelField label="When" orientation="horizontal">
-            {formatDateTime(latest.created_at)}
-          </PanelField>
-          {latest.error && (
-            <PanelField label="Error" orientation="horizontal">
-              {latest.error}
+        <div className="space-y-2">
+          <div className="space-y-1 text-sm">
+            <PanelField label="Latest" orientation="horizontal">
+              <StatusBadge value={latest.status} />
             </PanelField>
+            <PanelField label="Candidates" orientation="horizontal">
+              {organicCount(latest.results)}
+            </PanelField>
+            <PanelField label="Attempts" orientation="horizontal">
+              {query.data?.length}
+            </PanelField>
+            <PanelField label="Cost" orientation="horizontal">
+              <CostTag value={latest.cost_eur} />
+            </PanelField>
+            <PanelField label="When" orientation="horizontal">
+              {formatDateTime(latest.created_at)}
+            </PanelField>
+            {latest.error && (
+              <PanelField label="Error" orientation="horizontal">
+                {latest.error}
+              </PanelField>
+            )}
+          </div>
+          {latest.results && (
+            <Collapsible title="Raw search results">
+              <JsonBlock data={latest.results} />
+            </Collapsible>
           )}
         </div>
       )}
@@ -163,29 +190,34 @@ export function ResolveWebsiteSection({ kvk }: { kvk: string }) {
       {!w ? (
         <QueryState query={query} />
       ) : (
-        <div className="space-y-1 text-sm">
-          <PanelField label="Homepage" orientation="horizontal">
-            {w.homepage_url ? (
-              <PanelLink href={w.homepage_url} Icon={IconWorld}>
-                {w.homepage_url}
-              </PanelLink>
-            ) : (
-              <span className="text-gray-400">no confident match</span>
-            )}
-          </PanelField>
-          <PanelField label="Confidence" orientation="horizontal">
-            <StatusBadge value={w.confidence} />
-          </PanelField>
-          <PanelField label="Reason" orientation="horizontal">
-            {w.reason}
-          </PanelField>
-          <PanelField label="Cost" orientation="horizontal">
-            <CostTag
-              value={w.cost_eur}
-              inputTokens={w.input_tokens}
-              outputTokens={w.output_tokens}
-            />
-          </PanelField>
+        <div className="space-y-2">
+          <div className="space-y-1 text-sm">
+            <PanelField label="Homepage" orientation="horizontal">
+              {w.homepage_url ? (
+                <PanelLink href={w.homepage_url} Icon={IconWorld}>
+                  {w.homepage_url}
+                </PanelLink>
+              ) : (
+                <span className="text-gray-400">no confident match</span>
+              )}
+            </PanelField>
+            <PanelField label="Confidence" orientation="horizontal">
+              <StatusBadge value={w.confidence} />
+            </PanelField>
+            <PanelField label="Reason" orientation="horizontal">
+              {w.reason}
+            </PanelField>
+            <PanelField label="Cost" orientation="horizontal">
+              <CostTag
+                value={w.cost_eur}
+                inputTokens={w.input_tokens}
+                outputTokens={w.output_tokens}
+              />
+            </PanelField>
+          </div>
+          <Collapsible title="Full response">
+            <JsonBlock data={w} />
+          </Collapsible>
         </div>
       )}
     </Section>
@@ -211,25 +243,34 @@ export function ScrapeSection({ kvk }: { kvk: string }) {
       {!scrape ? (
         <QueryState query={query} />
       ) : (
-        <div className="space-y-1 text-sm">
-          <PanelField label="Status" orientation="horizontal">
-            <StatusBadge value={scrape.status} />
-          </PanelField>
-          {scrape.pages.map((p) => (
-            <PanelField key={p.id} label={p.title || "page"} orientation="horizontal">
-              <span className="flex items-center gap-2">
-                <StatusBadge value={p.status} />
-                {p.markdown != null && (
-                  <span className="text-gray-400">
-                    {p.markdown.length.toLocaleString()} md chars
-                  </span>
-                )}
-              </span>
+        <div className="space-y-2">
+          <div className="space-y-1 text-sm">
+            <PanelField label="Status" orientation="horizontal">
+              <StatusBadge value={scrape.status} />
             </PanelField>
-          ))}
-          <PanelField label="When" orientation="horizontal">
-            {formatDateTime(scrape.created_at)}
-          </PanelField>
+            {scrape.pages.map((p) => (
+              <PanelField key={p.id} label={p.title || "page"} orientation="horizontal">
+                <span className="flex items-center gap-2">
+                  <StatusBadge value={p.status} />
+                  {p.markdown != null && (
+                    <span className="text-gray-400">
+                      {p.markdown.length.toLocaleString()} md chars
+                    </span>
+                  )}
+                </span>
+              </PanelField>
+            ))}
+            <PanelField label="When" orientation="horizontal">
+              {formatDateTime(scrape.created_at)}
+            </PanelField>
+          </div>
+          {scrape.pages
+            .filter((p) => p.markdown)
+            .map((p) => (
+              <Collapsible key={p.id} title={`Markdown · ${p.title || p.url}`}>
+                <TextBlock text={p.markdown!} />
+              </Collapsible>
+            ))}
         </div>
       )}
     </Section>
@@ -255,29 +296,34 @@ export function CareersSection({ kvk }: { kvk: string }) {
       {!c ? (
         <QueryState query={query} />
       ) : (
-        <div className="space-y-1 text-sm">
-          <PanelField label="Careers URL" orientation="horizontal">
-            {c.url ? (
-              <PanelLink href={c.url} Icon={IconBriefcase}>
-                {c.url}
-              </PanelLink>
-            ) : (
-              <span className="text-gray-400">no same-domain careers page</span>
-            )}
-          </PanelField>
-          <PanelField label="Confidence" orientation="horizontal">
-            <StatusBadge value={c.confidence} />
-          </PanelField>
-          <PanelField label="Reason" orientation="horizontal">
-            {c.reason}
-          </PanelField>
-          <PanelField label="Cost" orientation="horizontal">
-            <CostTag
-              value={c.cost_eur}
-              inputTokens={c.input_tokens}
-              outputTokens={c.output_tokens}
-            />
-          </PanelField>
+        <div className="space-y-2">
+          <div className="space-y-1 text-sm">
+            <PanelField label="Careers URL" orientation="horizontal">
+              {c.url ? (
+                <PanelLink href={c.url} Icon={IconBriefcase}>
+                  {c.url}
+                </PanelLink>
+              ) : (
+                <span className="text-gray-400">no same-domain careers page</span>
+              )}
+            </PanelField>
+            <PanelField label="Confidence" orientation="horizontal">
+              <StatusBadge value={c.confidence} />
+            </PanelField>
+            <PanelField label="Reason" orientation="horizontal">
+              {c.reason}
+            </PanelField>
+            <PanelField label="Cost" orientation="horizontal">
+              <CostTag
+                value={c.cost_eur}
+                inputTokens={c.input_tokens}
+                outputTokens={c.output_tokens}
+              />
+            </PanelField>
+          </div>
+          <Collapsible title="Full response">
+            <JsonBlock data={c} />
+          </Collapsible>
         </div>
       )}
     </Section>
@@ -351,6 +397,9 @@ export function JobsSection({ kvk }: { kvk: string }) {
           <PanelField label="When" orientation="horizontal">
             {formatDateTime(scrape.created_at)}
           </PanelField>
+          <Collapsible title="Full response">
+            <JsonBlock data={scrape} />
+          </Collapsible>
         </div>
       )}
     </Section>
@@ -393,6 +442,11 @@ export function GeocodeSection({
             </div>
           </PanelField>
         ))}
+        {company.addresses.length > 0 && (
+          <Collapsible title="Addresses (raw)">
+            <JsonBlock data={company.addresses} />
+          </Collapsible>
+        )}
       </div>
     </Section>
   );
